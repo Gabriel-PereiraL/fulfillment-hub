@@ -60,5 +60,7 @@ D-P1 idioma final da doc · D-P2 Admin separado · D-P4 k6/NBomber · D-P6 rede 
 **Gate 9 — fechado.** Critérios: mensagem envenenada → DLQ após `maxReceiveCount` ✔ (T15); consumidor recebe duplicata e não duplica efeito ✔ (T14); compose completo funciona ✔ (smoke com Postgres + LocalStack + Aspire + 3 hosts); testes com Testcontainers LocalStack ✔; BACKLOG P0 fechado ✔ (BL-084…087, 147).
 **Gate 10 — Security hardening**: checklist OWASP com link para código/teste em cada item; testes de broken access control; SECURITY.md sem seções "planejado" para o que existe.
 
-## Comando para próxima sessão
-"Leia PROJECT_STATE.md, ROADMAP.md, BACKLOG.md e DECISIONS.md antes de continuar." — depois, começar pela tarefa 1 da lista acima (Fase 10), com `docker compose --profile deps up -d` ativo.
+## Comando para próxima sessão (retomada prevista: segunda-feira, 2026-09-21)
+"Leia PROJECT_STATE.md, ROADMAP.md, BACKLOG.md e DECISIONS.md antes de continuar." — depois, começar pela tarefa 1 da lista acima (Fase 10), com Docker Desktop aberto e `docker compose --profile deps up -d` (Postgres + LocalStack + Aspire; os volumes persistem, o banco já tem as 6 migrations e o seed).
+
+Estado ao encerrar 2026-09-18: working tree limpo, `main` local = `origin/main`, nenhum host rodando, containers do compose parados (`docker compose --profile deps stop`). Não há trabalho em andamento nem branch paralela. Push só com autorização explícita do usuário.
