@@ -37,8 +37,8 @@ public sealed partial class DevelopmentSeeder(
 
         if (!await db.Customers.AnyAsync(c => c.UserId == customerUser.Id, cancellationToken))
         {
-            var customer = Customer.Register(customerUser.Id, "Cliente de Teste", customerUser.Email, PhoneNumber.Of("+5581999990000"), now);
-            customer.AddAddress("Casa", Address.Create("Rua das Flores", "123", "Apto 4", "Boa Viagem", "Recife", "PE", "51020-000", latitude: -8.12, longitude: -34.9), now);
+            var customer = Customer.Register(customerUser.Id, "Test Customer", customerUser.Email, PhoneNumber.Of("+5581999990000"), now);
+            customer.AddAddress("Home", Address.Create("Rua das Flores", "123", "Apto 4", "Boa Viagem", "Recife", "PE", "51020-000", latitude: -8.12, longitude: -34.9), now);
             db.Customers.Add(customer);
         }
 
@@ -56,11 +56,11 @@ public sealed partial class DevelopmentSeeder(
 
     private static readonly (string Sku, string Name, decimal Price, int Stock)[] Products =
     [
-        ("BOOK-CLEAN-CODE", "Livro: Código Limpo", 89.9m, 25),
-        ("MUG-DOTNET", "Caneca .NET", 39.5m, 100),
-        ("TSHIRT-FH-M", "Camiseta FulfillmentHub (M)", 59m, 40),
-        ("STICKER-PACK", "Pacote de adesivos", 12m, 500),
-        ("LAST-UNIT", "Item de estoque único (testes de concorrência)", 199m, 1),
+        ("BOOK-CLEAN-CODE", "Book: Clean Code", 89.9m, 25),
+        ("MUG-DOTNET", ".NET mug", 39.5m, 100),
+        ("TSHIRT-FH-M", "FulfillmentHub t-shirt (M)", 59m, 40),
+        ("STICKER-PACK", "Sticker pack", 12m, 500),
+        ("LAST-UNIT", "Single-unit item (concurrency tests)", 199m, 1),
     ];
 
     private async Task<User> EnsureUserAsync(string email, string password, Role[] roles, DateTimeOffset now, CancellationToken cancellationToken)
