@@ -47,6 +47,11 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-19 | Skills privadas em `.claude/skills/` (mesmo layout do Serraf-Pessoas) + `.ai/` para memória; tudo no `.gitignore` | consistência com o outro projeto; Claude Code carrega `.claude/skills` automaticamente | 2026-09-18 |
 | D-20 | `github-workflow-enforcer` do Serraf-Pessoas não copiada | obriga push; viola invariante | 2026-09-18 |
 | D-21 | Base das skills C#: kit do Mukesh + complementos Aaron/Microsoft + skill própria curada com revisão crítica | melhor aderência a .NET 10 e pragmatismo; descartados kits dogmáticos (Clean Architecture + Repository + MediatR) | 2026-09-18 |
+| D-22 | Testes rodam no **Microsoft.Testing.Platform** (`global.json` → `"test": {"runner": "Microsoft.Testing.Platform"}`, `UseMicrosoftTestingPlatformRunner`, sem `Microsoft.NET.Test.Sdk`); comandos `dotnet test --solution/--project` | o .NET 10 SDK não roda xunit.v3 no modo VSTest; MTP é o caminho suportado | 2026-09-18 |
+| D-23 | Health check do banco via `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` (`AddDbContextCheck`) | pacote Microsoft alinhado ao EF Core 10; evita `AspNetCore.HealthChecks.NpgSql` (terceiro, 9.0.0) | 2026-09-18 |
+| D-24 | Exportador OTLP registrado **somente** quando `OTEL_EXPORTER_OTLP_ENDPOINT` está configurado | testes e ambientes sem coletor não tentam exportar; configuração (não código) decide o destino | 2026-09-18 |
+| D-25 | `Microsoft.EntityFrameworkCore.Design` referenciado no projeto de startup (`Api`), `PrivateAssets=all`; migrations em `Infrastructure/Persistence/Migrations` isentas de analyzers via `.editorconfig` | exigência do `dotnet ef`; código gerado não segue o estilo do projeto | 2026-09-18 |
+| D-26 | Logs em JSON (`AddJsonConsole`) fora de Development; console legível em Development; `LoggerMessage` com `EventId` fixo | containers/coletores ingerem uma linha JSON por evento; dev lê no terminal | 2026-09-18 |
 
 ## Decisões pendentes
 
@@ -60,5 +65,5 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-P6 | Rede AWS em dev: NAT / VPC endpoints / subnets públicas | A / B / C | C em dev com flag para B | Fase 15 |
 | D-P7 | Estado do Terraform | local / S3+DynamoDB | S3+DynamoDB (bootstrap manual) | Fase 15 |
 | D-P8 | Simulator persiste estado em memória ou SQLite | memória / SQLite | memória (reinício = limpa) | Fase 6 |
-| D-P9 | `git init` local: nesta próxima sessão ou após Gate 1 | agora / depois | **na Fase 1, após o esqueleto compilar** (primeiro commit útil) | Fase 1 |
+| D-P9 | ~~`git init` local~~ — **resolvida em 2026-09-18**: repositório local criado na Fase 1 (branch `main`, sem remote) | — | — | — |
 | D-P10 | Versionamento de API (`/v1` fixo no path) | sim / não | sim, prefixo `/api/v1` fixo, sem biblioteca de versioning | Fase 4 |

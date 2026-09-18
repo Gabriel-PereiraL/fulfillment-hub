@@ -10,7 +10,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 | # | Fase | Status | Gate |
 |---|---|---|---|
 | 0 | Documentação e arquitetura | **done (2026-09-18)** | Gate 0 |
-| 1 | Solution .NET + foundation | todo | Gate 1 |
+| 1 | Solution .NET + foundation | **done (2026-09-18)** | Gate 1 |
 | 2 | Domínio e banco | todo | Gate 2 |
 | 3 | Identity + Auth (JWT, roles) | todo | Gate 3 |
 | 4 | Orders (API + idempotência + concorrência de estoque) | todo | Gate 4 |
@@ -39,7 +39,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 **Critérios de aceite (Gate 0)**: todos os arquivos de `docs/` + `docs/adr/` existem e são coerentes; CLAUDE.md aponta para PROJECT_STATE e SKILLS_INDEX; `.gitignore` cobre privados/secrets; teste manual de "nova sessão" descrito em `.ai/CHECKLIST.md`.
 **Dependências**: nenhuma. **Riscos**: over-documentar sem código (mitigado: Fase 1 começa na próxima sessão).
 
-## Fase 1 — Solution .NET + foundation
+## Fase 1 — Solution .NET + foundation — `done`
 **Objetivo**: esqueleto executável, compilando com analyzers, banco local, migrations, health check, primeiros testes, telemetria mínima.
 **Tasks**:
 1. `dotnet new sln`; projetos `Domain`, `Application`, `Infrastructure`, `Api`, `Worker`, `ProviderSimulator`; testes `UnitTests`, `IntegrationTests`, `ArchitectureTests`.
@@ -54,6 +54,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 10. `git init` local (sem remote); primeiro commit após `git status` limpo de privados.
 **Critérios de aceite (Gate 1)**: `dotnet build` sem warnings; `dotnet test` verde (unit + arch + integration com container); `docker compose up` sobe Postgres e Aspire Dashboard; API sobe, `/health/ready` OK, trace visível no dashboard; `git status` não mostra arquivos privados.
 **Dependências**: Docker Desktop rodando. **Riscos**: versões de pacotes .NET 10 (validar no NuGet na sessão); Testcontainers no Windows (Docker Desktop com WSL2).
+**Resultado (2026-09-18)**: todos os critérios atendidos; 28 testes verdes; confirmação visual do trace no Aspire Dashboard a cargo do usuário. Ajustes em relação ao plano: testes rodam no Microsoft.Testing.Platform (xunit.v3 + .NET 10 SDK); health check do banco via pacote EF Core da Microsoft; migration inicial vazia (modelo chega na Fase 2).
 
 ## Fase 2 — Domínio e banco
 **Objetivo**: modelo de domínio dos módulos Catalog, Customers, Orders, Payments, Deliveries, Identity com invariantes testadas e schema consistente.

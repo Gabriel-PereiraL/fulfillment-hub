@@ -23,9 +23,9 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-020 | Esqueleto Minimal APIs, ProblemDetails, `IExceptionHandler`, OpenAPI + Scalar | 1 | P0 | todo |
-| BL-021 | Health checks `/health/live`, `/health/ready` | 1 | P0 | todo |
-| BL-022 | Correlation id middleware (`X-Correlation-Id`) | 1 | P0 | todo |
+| BL-020 | Esqueleto Minimal APIs, ProblemDetails, `IExceptionHandler`, OpenAPI + Scalar | 1 | P0 | done |
+| BL-021 | Health checks `/health/live`, `/health/ready` | 1 | P0 | done |
+| BL-022 | Correlation id middleware (`X-Correlation-Id`) | 1 | P0 | done |
 | BL-023 | `POST /auth/login`, `GET /me` | 3 | P0 | todo |
 | BL-024 | `POST /orders` com filtro `Idempotency-Key` + `IdempotencyRecord` | 4 | P0 | todo |
 | BL-025 | `GET /orders/{id}`, `GET /orders` (keyset pagination), autorização por recurso (cliente só vê os seus) | 4 | P0 | todo |
@@ -43,7 +43,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-040 | `FulfillmentHubDbContext` + `IFulfillmentHubDbContext` + migration inicial + `dotnet ef` funcionando | 1 | P0 | todo |
+| BL-040 | `FulfillmentHubDbContext` + `IFulfillmentHubDbContext` + migration inicial + `dotnet ef` funcionando | 1 | P0 | done |
 | BL-041 | Configurações EF por entidade; owned/complex types; conversores de ID; `xmin` como concurrency token | 2 | P0 | todo |
 | BL-042 | Constraints: `CHECK stock >= 0`, `UNIQUE` parciais (pagamento/entrega ativos por pedido), `UNIQUE(provider, provider_event_id)` | 2 | P0 | todo |
 | BL-043 | Índices para consultas de lista (customer_id+created_at, status), outbox (`status,next_attempt_at`), webhook | 2 | P0 | todo |
@@ -87,7 +87,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-100 | user-secrets + `.env.example`; nenhum secret em `appsettings` | 1 | P0 | todo |
+| BL-100 | user-secrets + `.env.example`; nenhum secret em `appsettings` | 1 | P0 | done |
 | BL-101 | JWT (HS256, chave ≥ 32 bytes via secrets, exp curta), `FallbackPolicy` autenticado, policies por papel | 3 | P0 | todo |
 | BL-102 | `PasswordHasher<T>` (PBKDF2) e política mínima de senha | 3 | P0 | todo |
 | BL-103 | Rate limiting: login, webhooks, `POST /orders` | 3/10 | P0 | todo |
@@ -104,8 +104,8 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-120 | Logging JSON estruturado + `LoggerMessage` source generator + scopes com correlation id | 1 | P0 | todo |
-| BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → Aspire Dashboard | 1 | P0 | todo |
+| BL-120 | Logging JSON estruturado + `LoggerMessage` source generator + scopes com correlation id | 1 | P0 | done |
+| BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → Aspire Dashboard | 1 | P0 | done |
 | BL-122 | `ActivitySource`/`Meter` do projeto; spans de casos de uso, provider calls, outbox, consumers | 5–11 | P0 | todo |
 | BL-123 | Métricas de negócio/operação (OBSERVABILITY.md tabela) | 11 | P0 | todo |
 | BL-124 | Instrumentação AWS SDK (SQS) | 9 | P1 | todo |
@@ -117,8 +117,8 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-140 | Projetos de teste + xUnit v3 + Shouldly + Testcontainers + `WebApplicationFactory` base | 1 | P0 | todo |
-| BL-141 | ArchitectureTests (NetArchTest): dependências, convenções (`sealed`, sufixos) | 1 | P0 | todo |
+| BL-140 | Projetos de teste + xUnit v3 + Shouldly + Testcontainers + `WebApplicationFactory` base | 1 | P0 | done |
+| BL-141 | ArchitectureTests (NetArchTest): dependências, convenções (`sealed`, sufixos) | 1 | P0 | done |
 | BL-142 | Idempotência de `POST /orders` (3 cenários) | 4 | P0 | todo |
 | BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | todo |
 | BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | todo |
@@ -134,9 +134,9 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-160 | `docker-compose.yml` (Postgres 17, Aspire Dashboard; LocalStack na Fase 9; simulator na 6) | 1 | P0 | todo |
-| BL-161 | `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` | 1 | P0 | todo |
-| BL-162 | `git init` local, primeiro commit limpo (sem privados) | 1 | P0 | todo |
+| BL-160 | `docker-compose.yml` (Postgres 17, Aspire Dashboard; LocalStack na Fase 9; simulator na 6) | 1 | P0 | done |
+| BL-161 | `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` | 1 | P0 | done |
+| BL-162 | `git init` local, primeiro commit limpo (sem privados) | 1 | P0 | done |
 | BL-163 | Dockerfiles multi-stage não-root + healthcheck (Api, Worker, Simulator, Admin) | 13 | P0 | todo |
 | BL-164 | GitHub Actions: build/test/scan/image — **após autorização** | 14 | P0 | todo |
 | BL-165 | Scripts `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |

@@ -11,42 +11,42 @@
 | AWS CLI | **não instalado** | só na Fase 15 (instalar; usar SSO/credenciais temporárias) |
 | SO | Windows 11 Pro | shell: PowerShell 5.1 ou Git Bash |
 
-## 2. Primeiro setup (a partir da Fase 1)
+## 2. Primeiro setup
 
 ```bash
-git clone <local>   # nesta fase o repositório é apenas local
-cd FulfillmentHub
+cd FulfillmentHub                      # nesta fase o repositório é apenas local
 dotnet --version                       # 10.0.x
-docker compose --profile deps up -d    # postgres, aspire-dashboard (+ localstack, simulator conforme fase)
-dotnet user-secrets init --project src/FulfillmentHub.Api
-dotnet user-secrets set "ConnectionStrings:FulfillmentHub" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<dev>" --project src/FulfillmentHub.Api
-dotnet user-secrets set "Jwt:SigningKey" "<32+ bytes aleatórios>" --project src/FulfillmentHub.Api
+cp .env.example .env                   # ajuste POSTGRES_PASSWORD (valor local; .env é ignorado pelo Git)
+docker compose --profile deps up -d    # postgres (5432) + aspire-dashboard (UI 18888, OTLP gRPC 4317)
+dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Worker
 dotnet tool restore                    # dotnet-ef (manifest em .config/dotnet-tools.json)
 dotnet ef database update --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
-dotnet run --project src/FulfillmentHub.Api            # https://localhost:5001 — /scalar (OpenAPI UI), /health/ready
+dotnet run --project src/FulfillmentHub.Api               # http://localhost:5000 — /scalar/v1 (OpenAPI UI), /health/live, /health/ready
 dotnet run --project src/FulfillmentHub.Worker
-dotnet run --project src/FulfillmentHub.ProviderSimulator   # http://localhost:5100
+dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live
 ```
 
-Aspire Dashboard: http://localhost:18888 (traces/logs/métricas).
+Aspire Dashboard: http://localhost:18888 (traces/logs/métricas). Os hosts exportam OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (já está em `appsettings.Development.json`).
 
 ## 3. Comandos do dia a dia
 
 ```bash
-dotnet build FulfillmentHub.sln                    # com TreatWarningsAsErrors
-dotnet test                                        # unit + architecture + integration (Docker)
-dotnet test --filter "Category!=E2E"
-dotnet format                                      # aplica .editorconfig
-dotnet ef migrations add <Nome> --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
+dotnet build FulfillmentHub.slnx                        # TreatWarningsAsErrors + analyzers
+dotnet test --solution FulfillmentHub.slnx              # unit + architecture + integration (Docker necessário)
+dotnet test --project tests/FulfillmentHub.UnitTests    # um projeto
+dotnet format FulfillmentHub.slnx --verify-no-changes   # estilo (.editorconfig)
+dotnet ef migrations add <Nome> --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api --output-dir Persistence/Migrations
 dotnet ef migrations script --idempotent -o artifacts/migrate.sql --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
-dotnet list package --vulnerable --include-transitive
-dotnet run --project src/FulfillmentHub.Api -- seed   # seed de dev (comando explícito; Fase 2)
+dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive
 ```
+
+Os testes usam o Microsoft.Testing.Platform (`global.json` → `test.runner`): use `--solution`/`--project`, não o caminho posicional.
 
 ## 4. Configuração e segredos
 
 - `appsettings.json` (defaults sem segredos) → `appsettings.Development.json` (portas, níveis de log) → **user-secrets** (dev) → variáveis de ambiente (containers/AWS).
-- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas (Fase 1): `ConnectionStrings:FulfillmentHub`, `Jwt:SigningKey`, `Jwt:Issuer`, `Jwt:Audience`, `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:*`, `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey`, `Jwt:Issuer`, `Jwt:Audience`, `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:*`, `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - Options tipadas com `ValidateOnStart`: a aplicação **não sobe** com configuração inválida — é intencional.
 
 ## 5. Convenções de código
