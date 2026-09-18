@@ -12,6 +12,7 @@ internal sealed class DeliveryConfiguration : IEntityTypeConfiguration<Delivery>
         builder.ToTable("deliveries");
 
         builder.HasKey(d => d.Id);
+        builder.Property(d => d.Id).ValueGeneratedNever();
         builder.Property(d => d.Status).AsString();
         builder.Property(d => d.Provider).HasMaxLength(Delivery.ProviderMaxLength);
         builder.Property(d => d.ProviderDeliveryId).HasMaxLength(Delivery.ProviderDeliveryIdMaxLength);

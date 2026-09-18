@@ -12,6 +12,9 @@ internal sealed class DeliveryEventConfiguration : IEntityTypeConfiguration<Deli
         builder.ToTable("delivery_events");
 
         builder.HasKey(e => e.Id);
+        // Ids are assigned by the aggregate (Guid v7). Without this, EF treats a new child found through a navigation
+        // as an existing row (its key is "already set") and issues an UPDATE instead of an INSERT.
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.ProviderEventId).HasMaxLength(DeliveryEvent.ProviderEventIdMaxLength);
         builder.Property(e => e.ProviderStatus).HasMaxLength(DeliveryEvent.ProviderStatusMaxLength);
         builder.Property(e => e.Disposition).AsString();

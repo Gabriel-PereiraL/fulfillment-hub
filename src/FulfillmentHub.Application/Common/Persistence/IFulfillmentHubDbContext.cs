@@ -5,6 +5,7 @@ using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Domain.Orders;
 using FulfillmentHub.Domain.Payments;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace FulfillmentHub.Application.Common.Persistence;
 
@@ -27,6 +28,9 @@ public interface IFulfillmentHubDbContext
     DbSet<Delivery> Deliveries { get; }
 
     DbSet<User> Users { get; }
+
+    /// <summary>Exposed for use cases that must discard a failed unit of work and start over (optimistic concurrency retries).</summary>
+    ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

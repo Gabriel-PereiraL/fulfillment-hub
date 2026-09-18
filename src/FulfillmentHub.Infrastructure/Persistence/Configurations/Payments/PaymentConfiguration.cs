@@ -12,6 +12,7 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.ToTable("payments");
 
         builder.HasKey(p => p.Id);
+        builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.Status).AsString();
         builder.Property(p => p.Provider).HasMaxLength(Payment.ProviderMaxLength);
         builder.Property(p => p.ProviderPaymentId).HasMaxLength(Payment.ProviderPaymentIdMaxLength);

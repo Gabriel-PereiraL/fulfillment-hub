@@ -12,6 +12,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.ToTable("orders");
 
         builder.HasKey(o => o.Id);
+        builder.Property(o => o.Id).ValueGeneratedNever();
 
         builder.Property(o => o.Number)
             .HasDefaultValueSql($"nextval('{FulfillmentHubDbContext.OrderNumberSequence}')")

@@ -1,6 +1,9 @@
+using FulfillmentHub.Api.Catalog;
 using FulfillmentHub.Api.ErrorHandling;
 using FulfillmentHub.Api.Identity;
 using FulfillmentHub.Api.Middleware;
+using FulfillmentHub.Api.Orders;
+using FulfillmentHub.Application;
 using FulfillmentHub.Infrastructure.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
 using FulfillmentHub.Infrastructure.Seeding;
@@ -20,6 +23,7 @@ builder.AddFulfillmentHubTelemetry("fulfillmenthub-api")
 
 builder.Services.AddFulfillmentHubPersistence();
 builder.Services.AddFulfillmentHubIdentity();
+builder.Services.AddFulfillmentHubApplication();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
 builder.Services.AddFulfillmentHubApiSecurity();
@@ -69,6 +73,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 
 app.MapAuthEndpoints();
 app.MapUsersEndpoints();
+app.MapProductsEndpoints();
+app.MapOrdersEndpoints();
 
 app.Run();
 

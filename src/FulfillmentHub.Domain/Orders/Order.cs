@@ -66,7 +66,8 @@ public sealed class Order : AggregateRoot<OrderId>
 
     public IReadOnlyList<OrderItem> Items => _items.AsReadOnly();
 
-    public IReadOnlyList<OrderStatusChange> StatusHistory => _statusHistory.AsReadOnly();
+    /// <summary>Chronological. Rows come back from the database in no guaranteed order, so the aggregate sorts.</summary>
+    public IReadOnlyList<OrderStatusChange> StatusHistory => _statusHistory.OrderBy(h => h.At).ToList();
 
     public bool IsFinal => Status is OrderStatus.Delivered or OrderStatus.Cancelled;
 
@@ -205,6 +206,9 @@ public sealed class Order : AggregateRoot<OrderId>
         CancellationReason = reason;
         Raise(new OrderCancelled(Id, reason, previous, now));
     }
+
+    /// <summary>Whether <see cref="Cancel"/> would succeed from the current status with the given reason.</summary>
+    public bool CanCancel(OrderCancellationReason reason) => Status == OrderStatus.Cancelled || IsCancellationAllowed(Status, reason);
 
     private static bool IsCancellationAllowed(OrderStatus status, OrderCancellationReason reason) => reason switch
     {

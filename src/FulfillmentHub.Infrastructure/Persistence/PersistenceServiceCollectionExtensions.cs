@@ -1,4 +1,5 @@
 using FulfillmentHub.Application.Common.Persistence;
+using FulfillmentHub.Infrastructure.Idempotency;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -34,6 +35,8 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddScoped<IFulfillmentHubDbContext>(serviceProvider =>
             serviceProvider.GetRequiredService<FulfillmentHubDbContext>());
+
+        services.AddSingleton<IdempotencyStore>();
 
         return services;
     }

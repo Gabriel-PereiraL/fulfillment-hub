@@ -1,3 +1,5 @@
+using FulfillmentHub.Application.Common;
+
 namespace FulfillmentHub.Infrastructure.Telemetry;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace FulfillmentHub.Infrastructure.Telemetry;
 /// </summary>
 public static class TelemetryNames
 {
-    public const string ActivitySource = "FulfillmentHub";
+    public const string ActivitySource = ApplicationTelemetry.Name;
 
-    public const string Meter = "FulfillmentHub";
+    public const string Meter = ApplicationTelemetry.Name;
 }

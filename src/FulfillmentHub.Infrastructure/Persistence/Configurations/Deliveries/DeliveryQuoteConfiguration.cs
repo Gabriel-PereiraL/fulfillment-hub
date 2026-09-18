@@ -12,6 +12,7 @@ internal sealed class DeliveryQuoteConfiguration : IEntityTypeConfiguration<Deli
         builder.ToTable("delivery_quotes");
 
         builder.HasKey(q => q.Id);
+        builder.Property(q => q.Id).ValueGeneratedNever();
         builder.Property(q => q.Provider).HasMaxLength(DeliveryQuote.ProviderMaxLength);
         builder.Property(q => q.ProviderQuoteId).HasMaxLength(DeliveryQuote.ProviderQuoteIdMaxLength);
         builder.ComplexProperty(q => q.Fee, money => money.ConfigureMoney());

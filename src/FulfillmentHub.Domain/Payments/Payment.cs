@@ -52,7 +52,8 @@ public sealed class Payment : AggregateRoot<PaymentId>
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public IReadOnlyList<PaymentAttempt> Attempts => _attempts.AsReadOnly();
+    /// <summary>By attempt number. Rows come back from the database in no guaranteed order, so the aggregate sorts.</summary>
+    public IReadOnlyList<PaymentAttempt> Attempts => _attempts.OrderBy(a => a.Number).ToList();
 
     public bool IsFinal => Status is PaymentStatus.Failed or PaymentStatus.Cancelled or PaymentStatus.Refunded;
 

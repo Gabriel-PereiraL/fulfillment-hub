@@ -5,6 +5,7 @@ using FulfillmentHub.Domain.Deliveries;
 using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Domain.Orders;
 using FulfillmentHub.Domain.Payments;
+using FulfillmentHub.Infrastructure.Idempotency;
 using FulfillmentHub.Infrastructure.Persistence.Conventions;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +29,9 @@ public sealed class FulfillmentHubDbContext(DbContextOptions<FulfillmentHubDbCon
     public DbSet<Delivery> Deliveries => Set<Delivery>();
 
     public DbSet<User> Users => Set<User>();
+
+    /// <summary>Infrastructure record (ADR-010); not part of <see cref="IFulfillmentHubDbContext"/>.</summary>
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

@@ -46,7 +46,8 @@ public sealed class Delivery : AggregateRoot<DeliveryId>
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public IReadOnlyList<DeliveryEvent> Events => _events.AsReadOnly();
+    /// <summary>In order of receipt. Rows come back from the database in no guaranteed order, so the aggregate sorts.</summary>
+    public IReadOnlyList<DeliveryEvent> Events => _events.OrderBy(e => e.ReceivedAt).ThenBy(e => e.OccurredAt).ToList();
 
     public bool IsFinal => Status is DeliveryStatus.Delivered or DeliveryStatus.Cancelled or DeliveryStatus.Returned;
 

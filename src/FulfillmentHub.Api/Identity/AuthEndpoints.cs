@@ -1,3 +1,4 @@
+using FulfillmentHub.Api.Common;
 using FulfillmentHub.Application.Identity;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -39,11 +40,7 @@ public static class AuthEndpoints
 
         return result.Match<Results<Ok<LoginResult>, ProblemHttpResult>>(
             login => TypedResults.Ok(login),
-            failure => TypedResults.Problem(
-                title: "Authentication failed",
-                detail: failure.Message,
-                statusCode: StatusCodes.Status401Unauthorized,
-                extensions: new Dictionary<string, object?> { ["code"] = failure.Code }));
+            failure => failure.ToProblem());
     }
 
     private static Ok<CurrentUserResponse> GetCurrentUser(ICurrentUser currentUser) =>
