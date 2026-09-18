@@ -12,7 +12,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 | 0 | Documentação e arquitetura | **done (2026-09-18)** | Gate 0 |
 | 1 | Solution .NET + foundation | **done (2026-09-18)** | Gate 1 |
 | 2 | Domínio e banco | **done (2026-09-18)** | Gate 2 |
-| 3 | Identity + Auth (JWT, roles) | todo | Gate 3 |
+| 3 | Identity + Auth (JWT, roles) | **done (2026-09-18)** | Gate 3 |
 | 4 | Orders (API + idempotência + concorrência de estoque) | todo | Gate 4 |
 | 5 | Payments (simulator + integração + webhook + reconciliação) | todo | Gate 5 |
 | 6 | Delivery provider simulator (Uber-like) + integração de saída resiliente | todo | Gate 6 |
@@ -63,11 +63,12 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 **Riscos**: over-modelagem — manter só o que os fluxos usam.
 **Resultado (2026-09-18)**: 6 módulos implementados (Catalog, Customers, Orders, Payments, Deliveries, Identity), migration `DomainModel`, 83 testes de unidade + 8 de integração (round-trips, CHECK, unique parcial, conflito `xmin`); `HasPendingModelChanges()` falso. Divergências registradas em DOMAIN.md §12 e D-27…D-30. Seed de desenvolvimento (BL-044) movido para a Fase 3 (precisa do hash de senha).
 
-## Fase 3 — Identity + Auth
+## Fase 3 — Identity + Auth — `done`
 **Objetivo**: usuários, papéis, login com JWT, políticas; API nega por padrão.
 **Tasks**: `User`/`Role`; `PasswordHasher`; `POST /auth/login` (rate-limited); emissão JWT (HS256, chave via secrets, expiração curta); `FallbackPolicy`; policies `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`; `GET /me`; seed admin via comando; testes (login ok/falha, 401/403, token expirado).
 **Gate 3**: endpoints protegidos por padrão; testes de autorização por papel; segredo JWT fora do código; SECURITY.md atualizado com o desenho.
 **Riscos**: tentação de usar ASP.NET Identity completo — não; só `PasswordHasher<T>`.
+**Resultado (2026-09-18)**: JWT HS256 via `JsonWebTokenHandler`/`AddJwtBearer`, `PasswordHasher<User>`, `FallbackPolicy` + 3 policies, login com rate limit (5/min/IP), `GET /me`, `GET /users/{id}` (AdminOnly), seed de desenvolvimento, validação nativa .NET 10; 24 testes novos (143 no total). Evidências em SECURITY.md §2. Rota inexistente para anônimo agora responde 401 (D-33).
 
 ## Fase 4 — Orders
 **Objetivo**: criar/consultar/cancelar pedidos com idempotência real e concorrência de estoque demonstrada.

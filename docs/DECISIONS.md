@@ -56,6 +56,11 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-28 | Value objects (`Money`, `Address`, `CourierInfo`) como **complex types** do EF Core 10 (table splitting), inclusive opcionais; VOs de um campo (`EmailAddress`, `PhoneNumber`) via value converter | semântica de valor (owned types têm identidade e quebram com instâncias compartilhadas); EF 10 passou a suportar complex types opcionais | 2026-09-18 |
 | D-29 | `EFCore.NamingConventions` (MIT, mantido pelo autor do Npgsql) para snake_case | identificadores PostgreSQL sem aspas, legíveis em SQL bruto/psql; alternativa (nomear tudo à mão) é verbosa e propensa a erro. Efeito colateral: colunas de `__EFMigrationsHistory` também em snake_case — bancos criados antes precisam ser recriados | 2026-09-18 |
 | D-30 | `DbContext` com tracking padrão; leituras usam `AsNoTracking()` explicitamente (não NoTracking global como sugere `efcore-patterns`) | evita `Update()` marcando a entidade inteira como modificada e bugs silenciosos em escritas | 2026-09-18 |
+| D-31 | Tokens emitidos com `JsonWebTokenHandler` (Microsoft.IdentityModel.JsonWebTokens 8.x), `MapInboundClaims = false`, `NameClaimType = "sub"`, `RoleClaimType = "role"`, claims mínimas (sem e-mail/nome) | handler atual (span-based, o mesmo que o JwtBearer usa); nomes curtos evitam o mapeamento legado para `ClaimTypes.*`; menos PII no token | 2026-09-18 |
+| D-32 | Rate limit de login: janela fixa 5 req/min por `RemoteIpAddress` (sem fila), 429 | simples e suficiente contra força bruta básica; por conta/lockout fica como P2; atrás de proxy exige `ForwardedHeaders` (Fase 16) | 2026-09-18 |
+| D-33 | `FallbackPolicy` = autenticado se aplica também a rotas inexistentes: anônimo recebe 401, autenticado recebe 404 | comportamento nativo do middleware de autorização; não revela a superfície de rotas a anônimos; documentado em SECURITY.md §2 | 2026-09-18 |
+| D-34 | Falhas de login indistinguíveis (401 + `auth.invalid_credentials`) e verificação contra *decoy hash* quando não há usuário | evitar enumeração por mensagem e por tempo (OWASP A07); custo de 1 PBKDF2 por tentativa, limitado pelo rate limit | 2026-09-18 |
+| D-35 | Validação de request com a validação nativa de Minimal APIs do .NET 10 (`AddValidation` + DataAnnotations); confirmada funcional (400 ProblemDetails) | zero dependências; suficiente para forma/obrigatoriedade (D-10 confirmada na prática) | 2026-09-18 |
 
 ## Decisões pendentes
 
@@ -70,4 +75,4 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-P7 | Estado do Terraform | local / S3+DynamoDB | S3+DynamoDB (bootstrap manual) | Fase 15 |
 | D-P8 | Simulator persiste estado em memória ou SQLite | memória / SQLite | memória (reinício = limpa) | Fase 6 |
 | D-P9 | ~~`git init` local~~ — **resolvida em 2026-09-18**: repositório local criado na Fase 1 (branch `main`, sem remote) | — | — | — |
-| D-P10 | Versionamento de API (`/v1` fixo no path) | sim / não | sim, prefixo `/api/v1` fixo, sem biblioteca de versioning | Fase 4 |
+| D-P10 | ~~Versionamento de API~~ — **resolvida em 2026-09-18**: prefixo fixo `/api/v1` em todos os grupos, sem biblioteca de versioning | — | — | — |

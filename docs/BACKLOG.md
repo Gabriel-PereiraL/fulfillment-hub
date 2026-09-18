@@ -26,7 +26,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-020 | Esqueleto Minimal APIs, ProblemDetails, `IExceptionHandler`, OpenAPI + Scalar | 1 | P0 | done |
 | BL-021 | Health checks `/health/live`, `/health/ready` | 1 | P0 | done |
 | BL-022 | Correlation id middleware (`X-Correlation-Id`) | 1 | P0 | done |
-| BL-023 | `POST /auth/login`, `GET /me` | 3 | P0 | todo |
+| BL-023 | `POST /auth/login`, `GET /me` | 3 | P0 | done |
 | BL-024 | `POST /orders` com filtro `Idempotency-Key` + `IdempotencyRecord` | 4 | P0 | todo |
 | BL-025 | `GET /orders/{id}`, `GET /orders` (keyset pagination), autorização por recurso (cliente só vê os seus) | 4 | P0 | todo |
 | BL-026 | `POST /orders/{id}/cancel` | 4 | P0 | todo |
@@ -34,7 +34,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-028 | `POST /webhooks/deliveries` | 7 | P0 | todo |
 | BL-029 | Endpoints de catálogo (Admin CRUD de produtos) | 4 | P1 | todo |
 | BL-030 | Endpoints de operação: reprocessar outbox/webhook, reconciliar, cancelar entrega | 8–9 | P1 | todo |
-| BL-031 | Validação nativa .NET 10 (`AddValidation`) nos requests | 4 | P0 | todo |
+| BL-031 | Validação nativa .NET 10 (`AddValidation`) nos requests | 4 | P0 | done |
 | BL-032 | Versionamento de API (`/v1`) — decidir se via path fixo | 4 | P2 | todo |
 | BL-033 | Refresh tokens | 10 | P2 | todo |
 | BL-034 | Arquivos `.http` de exemplo por módulo | 4+ | P2 | todo |
@@ -47,7 +47,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-041 | Configurações EF por entidade; owned/complex types; conversores de ID; `xmin` como concurrency token | 2 | P0 | done |
 | BL-042 | Constraints: `CHECK stock >= 0`, `UNIQUE` parciais (pagamento/entrega ativos por pedido), `UNIQUE(provider, provider_event_id)` | 2 | P0 | done |
 | BL-043 | Índices para consultas de lista (customer_id+created_at, status), outbox (`status,next_attempt_at`), webhook | 2 | P0 | done |
-| BL-044 | Seed de desenvolvimento por comando explícito (`dotnet run -- seed`) — movido da Fase 2: depende do `PasswordHasher` | 3 | P1 | todo |
+| BL-044 | Seed de desenvolvimento por comando explícito (`dotnet run -- seed`) — movido da Fase 2: depende do `PasswordHasher` | 3 | P1 | done |
 | BL-045 | Interceptor de auditoria (`CreatedAt/UpdatedAt`) e `audit_logs` para ações operacionais | 2/8 | P1 | todo |
 | BL-046 | Estratégia de aplicação de migrations em nuvem (task one-off / `migrations script --idempotent`) | 16 | P0 | todo |
 | BL-047 | `ExecutionStrategy` (retry de transientes Npgsql) configurada e testada com transações explícitas | 8 | P1 | todo |
@@ -88,9 +88,9 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
 | BL-100 | user-secrets + `.env.example`; nenhum secret em `appsettings` | 1 | P0 | done |
-| BL-101 | JWT (HS256, chave ≥ 32 bytes via secrets, exp curta), `FallbackPolicy` autenticado, policies por papel | 3 | P0 | todo |
-| BL-102 | `PasswordHasher<T>` (PBKDF2) e política mínima de senha | 3 | P0 | todo |
-| BL-103 | Rate limiting: login, webhooks, `POST /orders` | 3/10 | P0 | todo |
+| BL-101 | JWT (HS256, chave ≥ 32 bytes via secrets, exp curta), `FallbackPolicy` autenticado, policies por papel | 3 | P0 | done |
+| BL-102 | `PasswordHasher<T>` (PBKDF2) e política mínima de senha | 3 | P0 | done |
+| BL-103 | Rate limiting: login (**done**, Fase 3), webhooks e `POST /orders` (Fase 10) | 3/10 | P0 | doing |
 | BL-104 | Assinatura HMAC de webhooks (tempo constante) + tolerância de timestamp + limite de corpo | 5/7 | P0 | todo |
 | BL-105 | Autorização por recurso (cliente só acessa os próprios pedidos) + testes de broken access control | 4/10 | P0 | todo |
 | BL-106 | Security headers, CORS explícito, HTTPS redirection/HSTS (fora do dev) | 10 | P0 | todo |
@@ -126,7 +126,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | todo |
 | BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |
 | BL-148 | E2E com compose: 3 fluxos | 12 | P0 | todo |
-| BL-149 | Testes de autorização (401/403, acesso cruzado) | 3/10 | P0 | todo |
+| BL-149 | Testes de autorização: 401/403 por papel (**done**, Fase 3); acesso cruzado por recurso (Fase 4) | 3/10 | P0 | doing |
 | BL-150 | Convergência com `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
 | BL-151 | Stryker (mutation) em Domain | 12 | P3 | todo |
 

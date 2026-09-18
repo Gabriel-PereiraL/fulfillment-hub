@@ -28,8 +28,8 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 |---|---|---|---|
 | Webhook forjado confirma pagamento | Spoofing/Tampering | HMAC-SHA256 com chave por provider, comparação em tempo constante, tolerância de timestamp (5 min), dedup por event id, **e** estado verificado por reconciliação (`GET` no provider) antes de ações irreversíveis de alto valor (decisão: reconciliar sempre que webhook mudar para `paid`? — ver D-P5) | 5/7/10 |
 | Cliente lê/cancela pedido de outro | Elevation/Information disclosure | autorização por recurso no caso de uso (`order.CustomerId == principal.CustomerId`), 404 em vez de 403 para não revelar existência; testes T16 | 4/10 |
-| Credential stuffing no login | Spoofing/DoS | rate limit por IP+conta, hash PBKDF2 (`PasswordHasher`), mensagens genéricas, lockout progressivo (P2) | 3/10 |
-| Token JWT roubado | Spoofing | expiração curta (15 min), `aud`/`iss` validados, HTTPS obrigatório fora de dev, sem token em logs/URLs; refresh token com rotação (P2) | 3 |
+| Credential stuffing no login | Spoofing/DoS | rate limit por IP+conta, hash PBKDF2 (`PasswordHasher`), mensagens genéricas, lockout progressivo (P2) | **3 ✔** (rate limit por IP, PBKDF2, 401 idêntico + decoy; lockout por conta pendente) |
+| Token JWT roubado | Spoofing | expiração curta (15 min), `aud`/`iss` validados, HTTPS obrigatório fora de dev, sem token em logs/URLs; refresh token com rotação (P2) | **3 ✔** (exp 15 min, iss/aud/alg validados, sem token em logs; HTTPS/HSTS na Fase 10) |
 | Overposting (`status`, `total`, `customerId` no body) | Tampering | DTOs de request sem esses campos; valores derivados do servidor; testes | 4 |
 | SQL injection | Tampering | EF Core parametrizado; `FromSql` só interpolado; sem concatenação; analyzer EF | 2 |
 | Flood de webhooks/pedidos | DoS | rate limiting (`AddRateLimiter`), limite de corpo, timeouts, fila absorve picos | 10 |
@@ -40,14 +40,37 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 | Migrations destrutivas automáticas | Tampering/Availability | nunca `Migrate()` automático; script idempotente revisado; task one-off | 16 |
 | Acesso de rede ao banco/fila | Information disclosure | RDS em subnet privada, SG só do ECS, IAM task role least privilege, sem IP público no banco | 15 |
 
-## 2. Autenticação e autorização (desenho)
+## 2. Autenticação e autorização — IMPLEMENTADO (Fase 3, 2026-09-18)
 
+| Item | Implementação | Evidência |
+|---|---|---|
+| Usuários | tabela `users` própria (`User` agregado, roles fixas `Customer/Operator/Admin` em `text[]`); **não** usa o framework ASP.NET Identity, só a classe `PasswordHasher<User>` (ADR-008) | `src/FulfillmentHub.Domain/Identity/User.cs`, `src/FulfillmentHub.Infrastructure/Identity/IdentityPasswordHasher.cs` |
+| Hash de senha | `PasswordHasher<TUser>` v3: PBKDF2-HMAC-SHA512, salt por senha, 100k iterações, formato versionado; re-hash transparente no login quando o formato evoluir (`SuccessRehashNeeded`); hash malformado no banco = senha errada, nunca 500 | `IdentityPasswordHasherTests`, `LoginHandler` |
+| Emissão de token | `JsonWebTokenHandler` (stack atual do IdentityModel), HS256 com chave ≥ 32 bytes; claims **mínimas**: `sub` (user id), `role[]`, `customer_id` (só clientes), `jti`, `iat/nbf/exp/iss/aud`. Sem e-mail/nome no token | `JwtTokenService`, `JwtTokenServiceTests` |
+| Expiração | 15 min (`Jwt:AccessTokenLifetimeMinutes`, faixa 1–60), clock skew 30 s; sem refresh token na v1 (P2 BL-033) | `JwtOptions`, `AuthEndpointsTests.ExpiredToken_Returns401` |
+| Validação de token | `AddJwtBearer` com issuer, audience, assinatura (`ValidAlgorithms = [HS256]`), lifetime e `RequireExpirationTime`; `MapInboundClaims = false` (nomes curtos, sem mapeamento mágico) | `JwtBearerOptionsSetup`, testes de token adulterado/expirado/chave estranha |
+| Segredo | `Jwt:SigningKey` **nunca** em `appsettings` (valor vazio no arquivo); user-secrets em dev, Secrets Manager na AWS; `ValidateOnStart` recusa subir com chave ausente ou < 32 chars | `AuthorizationTests.Api_RefusesToStart_WhenJwtSigningKeyIsTooShort` |
+| Autorização | `FallbackPolicy = RequireAuthenticatedUser` (negar por padrão); policies `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly` (`RequireRole`); `AllowAnonymous` explícito só em `/health/*`, `/auth/login`, OpenAPI/Scalar (Development) | `AuthorizationPolicies`, `Program.cs`, `AuthorizationTests` (200/403/401) |
+| Rota inexistente | anônimo → **401** (a fallback policy vale mesmo sem endpoint: não revela rotas); autenticado → 404 ProblemDetails | `RequestPipelineTests` |
+| Login | `POST /api/v1/auth/login`: validação nativa do .NET 10 (`AddValidation`, DataAnnotations) → 400 ProblemDetails; falha → **401 idêntico** para e-mail inexistente, senha errada e usuário inativo (`auth.invalid_credentials`), com verificação de hash contra um *decoy* quando não há usuário (mesmo custo → sem oráculo de tempo) | `LoginHandler`, `AuthEndpointsTests.Login_WrongPassword_UnknownEmail_AndInactiveUser_AreIndistinguishable` |
+| Rate limiting | `AddRateLimiter`: janela fixa de 5 tentativas/min por IP de origem no login → 429 (`RejectionStatusCode`) | `ApiSecurityServiceCollectionExtensions`, `AuthEndpointsTests.Login_IsRateLimitedPerClient` |
+| Logs | eventos `3000/3001` com `UserId` (sucesso) ou motivo interno (`UnknownUser/WrongPassword/InactiveUser/MalformedEmail`) — **sem e-mail, senha ou token**; EF sem `EnableSensitiveDataLogging` (parâmetros não são logados) | verificação manual do log do host em 2026-09-18 |
+| Principal na aplicação | `ICurrentUser` (Application) materializado das claims por request (`HttpContextCurrentUser`); casos de uso fazem autorização por recurso a partir dele (Fase 4) | `GET /api/v1/me` |
+| Admin | `GET /api/v1/users/{id}` (AdminOnly) expõe e-mail/roles/status de um usuário — único endpoint administrativo desta fase | `UsersEndpoints` |
+| Seed | `dotnet run --project src/FulfillmentHub.Api -- seed`: só em Development, senhas vindas de user-secrets (`Seed:*Password`, ≥ 12 chars), dados fictícios, idempotente | `DevelopmentSeeder` |
+
+### Limitações conhecidas (registradas)
+- Sem refresh/revogação de token: um token vazado vale até 15 min (BL-033, P2).
+- Sem lockout progressivo por conta (só rate limit por IP): atacante distribuído pode tentar 5/min por IP (P2).
+- Rate limit por `RemoteIpAddress`: atrás do ALB (Fase 16) exige `ForwardedHeaders` configurado com proxies conhecidos, senão todos compartilham o IP do balanceador (BL-106).
+- HS256 compartilha a mesma chave entre emissor e validador (Api/Admin); RS256 só se surgir mais de um emissor (ADR-008).
+- Sem MFA, sem OAuth/OIDC para terceiros (fora de escopo, ADR-008).
+
+### Desenho original (mantido para referência)
 - **Usuários próprios** (tabela `users`), senha com `PasswordHasher<User>` (PBKDF2-HMAC-SHA512, iterações padrão do ASP.NET Core Identity — só a classe, não o framework). Política: ≥ 12 caracteres (sem regras bobas de composição).
-- **JWT bearer** emitido por `POST /auth/login`: HS256 com chave ≥ 256 bits vinda de secrets (dev: user-secrets; AWS: Secrets Manager); claims `sub`, `email`, `role[]`, `customer_id` (quando aplicável), `jti`; `exp` 15 min; `iss`/`aud` fixos e validados; clock skew 30 s.
-- Por que não OAuth/OIDC externo: fora do escopo (o objetivo é demonstrar autenticação/autorização no ASP.NET Core, não delegar). Registrado como possível extensão.
+- **JWT bearer** emitido por `POST /auth/login`: HS256 com chave ≥ 256 bits vinda de secrets; claims `sub`, `role[]`, `customer_id` (quando aplicável), `jti`; `exp` 15 min; `iss`/`aud` fixos e validados; clock skew 30 s.
 - **Autorização**: `FallbackPolicy` = usuário autenticado (negar por padrão). Policies: `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`. Autorização **por recurso** dentro do caso de uso (o principal é passado como `ICurrentUser`), com testes.
-- Endpoints sem JWT: `/health/*` (sem detalhes sensíveis em `ready`), `/webhooks/*` (assinatura HMAC), `/auth/login`, OpenAPI só em Development.
-- Admin UI (Blazor Server): cookie auth com `SameSite=Strict`, antiforgery nativo, mesmas policies.
+- Admin UI (Blazor Server): cookie auth com `SameSite=Strict`, antiforgery nativo, mesmas policies (Fase 17).
 
 ## 3. Segredos e configuração
 
@@ -63,15 +86,15 @@ Proibido em qualquer lugar: secrets em código, commits, logs, URLs, mensagens d
 
 | # | Categoria | Aplicação no projeto | Status |
 |---|---|---|---|
-| A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | planejado |
-| A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | planejado |
+| A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | **parcial (Fase 3)**: `FallbackPolicy` ✔, policies por papel com testes 401/403 ✔; autorização por recurso na Fase 4 |
+| A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | **parcial (Fase 3)**: PBKDF2-HMAC-SHA512 ✔, chave JWT ≥ 32 bytes validada no start ✔, `ValidAlgorithms=[HS256]` ✔; TLS/HMAC webhooks pendentes |
 | A03 | Injection | EF Core parametrizado, validação de entrada, sem SQL dinâmico, sem `Process.Start` | planejado |
 | A04 | Insecure Design | threat model, idempotência, limites (itens por pedido, tamanho de corpo), reconciliação | planejado |
 | A05 | Security Misconfiguration | headers (`X-Content-Type-Options`, `Referrer-Policy`, CSP na Admin), CORS explícito, erros sem stack fora de dev, OpenAPI só em dev, containers não-root | planejado |
 | A06 | Vulnerable Components | CPM, `--vulnerable`, dependency review, Trivy, imagens base atualizadas | planejado |
-| A07 | Identification & Authentication Failures | rate limit de login, mensagens genéricas, exp curta, sem enumeração de usuários | planejado |
+| A07 | Identification & Authentication Failures | rate limit de login, mensagens genéricas, exp curta, sem enumeração de usuários | **implementado (Fase 3)**: 5/min por IP ✔, 401 idêntico + decoy hash ✔, exp 15 min ✔, testes `AuthEndpointsTests` |
 | A08 | Software & Data Integrity Failures | assinatura de webhooks, outbox (integridade de eventos), lockfile de pacotes, CI com permissões mínimas | planejado |
-| A09 | Security Logging & Monitoring | logs estruturados de auth (sucesso/falha), webhooks rejeitados, alertas de 401/403 anômalos e DLQ, sem PII | planejado |
+| A09 | Security Logging & Monitoring | logs estruturados de auth (sucesso/falha), webhooks rejeitados, alertas de 401/403 anômalos e DLQ, sem PII | **parcial (Fase 3)**: eventos 3000/3001 de login sem PII ✔; alertas na Fase 11/16 |
 | A10 | SSRF | nenhuma URL de usuário é chamada; hosts de providers em allowlist de configuração | planejado |
 
 ## 5. Dados pessoais (LGPD — princípio de minimização)
