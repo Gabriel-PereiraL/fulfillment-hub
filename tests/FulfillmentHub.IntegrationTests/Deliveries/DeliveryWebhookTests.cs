@@ -31,8 +31,9 @@ public sealed class DeliveryWebhookTests(ApiFixture api)
     [Fact]
     public async Task Order_IsDelivered_ByTheProvidersWebhooks_EndToEnd()
     {
-        var (client, placed) = await PlaceOrderWithDeliveryRequestedAsync("50000-000");
+        var (client, placed, pause) = await PlaceOrderWithDeliveryRequestedAsync("50000-000");
         using (client)
+        using (pause)
         {
             var delivered = await WaitForOrderStatusAsync(client, placed.Id, "Delivered");
 
@@ -55,9 +56,8 @@ public sealed class DeliveryWebhookTests(ApiFixture api)
         using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody(ReturnedPostalCode, (product.Id.Value, 2)), Guid.NewGuid().ToString());
         var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        await WaitForOrderStatusAsync(client, placed.Id, "Paid");
-        (await RequestDeliveryAsync(placed.Id)).IsSuccess.ShouldBeTrue();
 
+        // Outbox all the way: OrderPlaced → payment → OrderPaid → delivery → provider returns the parcel → webhook.
         var cancelled = await WaitForOrderStatusAsync(client, placed.Id, "Cancelled");
 
         cancelled.CancellationReason.ShouldBe(nameof(OrderCancellationReason.DeliveryFailed));
@@ -69,8 +69,9 @@ public sealed class DeliveryWebhookTests(ApiFixture api)
     public async Task Webhooks_OutOfOrder_NeverRegressTheDelivery_ButAreRecorded()
     {
         // T7: "delivered" arrives before "pickup"; the late "pickup" is recorded as stale, not applied.
-        var (client, placed) = await PlaceOrderWithDeliveryRequestedAsync(SilentPostalCode);
+        var (client, placed, pause) = await PlaceOrderWithDeliveryRequestedAsync(SilentPostalCode);
         using (client)
+        using (pause)
         {
             var delivery = await GetDeliveryAsync((await GetOrderAggregateAsync(api, placed.Id)).DeliveryId!.Value.Value);
             var now = DateTimeOffset.UtcNow;
@@ -132,8 +133,9 @@ public sealed class DeliveryWebhookTests(ApiFixture api)
     [Fact]
     public async Task LostWebhooks_AreRecoveredByReconciliation()
     {
-        var (client, placed) = await PlaceOrderWithDeliveryRequestedAsync(SilentPostalCode);
+        var (client, placed, pause) = await PlaceOrderWithDeliveryRequestedAsync(SilentPostalCode);
         using (client)
+        using (pause)
         {
             await Task.Delay(2500, TestContext.Current.CancellationToken); // the provider delivers, silently
             (await client.GetFromJsonAsync<OrderDto>($"/api/v1/orders/{placed.Id}", TestContext.Current.CancellationToken))!
@@ -151,16 +153,19 @@ public sealed class DeliveryWebhookTests(ApiFixture api)
         }
     }
 
-    private async Task<(HttpClient Client, OrderDto Order)> PlaceOrderWithDeliveryRequestedAsync(string postalCode)
+    /// <summary>Outbox paused: payment published by hand, delivery requested by hand, so the test controls what the provider sees.</summary>
+    private async Task<(HttpClient Client, OrderDto Order, IDisposable OutboxPause)> PlaceOrderWithDeliveryRequestedAsync(string postalCode)
     {
+        var pause = api.Outbox.Pause();
         var product = await CreateProductAsync(api, stock: 5, price: ApprovedPrice);
         var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody(postalCode, (product.Id.Value, 1)), Guid.NewGuid().ToString());
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        await api.Outbox.RunOnceAsync();
         await WaitForOrderStatusAsync(client, placed.Id, "Paid");
         (await RequestDeliveryAsync(placed.Id)).IsSuccess.ShouldBeTrue();
-        return (client, placed);
+        return (client, placed, pause);
     }
 
     private async Task<FulfillmentHub.Application.Common.Result<DeliveryRequestOutcome>> RequestDeliveryAsync(Guid orderId)

@@ -41,6 +41,7 @@ public sealed class DeliveryFlowTests(ApiFixture api)
         order.DeliveryFee.ShouldNotBeNull().Amount.ShouldBeGreaterThan(0m);
         order.Total.Amount.ShouldBe(order.Subtotal.Amount + order.DeliveryFee.Amount);
         (await GetQuotesAsync(order.Id)).ShouldHaveSingleItem().Fee.Amount.ShouldBe(order.DeliveryFee.Amount);
+        await WaitForOrderStatusAsync(client, order.Id, "AwaitingPayment");
         (await GetPaymentForOrderAsync(api, order.Id)).Amount.Amount.ShouldBe(order.Total.Amount, "the customer is charged products + delivery");
     }
 
@@ -84,8 +85,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task PaidOrder_GetsADeliveryRequested_ReusingTheCheckoutQuote()
     {
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice);
         using (client)
+        using (pause)
         {
             var summary = await RunPendingDeliveriesAsync();
 
@@ -106,8 +108,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     public async Task RequestDelivery_WhenTheCheckoutQuoteExpired_RequotesOnce()
     {
         // Sandbox rule: zip …-001 → the simulator issues 1-second quotes.
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice, ShortLivedQuotePostalCode);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice, ShortLivedQuotePostalCode);
         using (client)
+        using (pause)
         {
             await Task.Delay(1200, TestContext.Current.CancellationToken);
 
@@ -126,8 +129,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task RequestDelivery_WhenTheQuoteExpiresTwice_GivesUp_ForAnOperator()
     {
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice);
         using (client)
+        using (pause)
         {
             api.ProviderOutage.Script = request =>
                 request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath.EndsWith("/deliveries", StringComparison.Ordinal)
@@ -158,8 +162,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task RequestDelivery_WhenTheProviderAlreadyHasIt_AdoptsTheExistingDelivery()
     {
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice);
         using (client)
+        using (pause)
         {
             // Simulate "our first call timed out after the provider created it": create it directly with the key we will send.
             var existingId = await CreateAtProviderAsync($"order-{placed.Id:N}-delivery-1", placed);
@@ -177,10 +182,12 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task RequestDelivery_ForAnUndeliverableAddress_CancelsTheOrder_AndReleasesStock()
     {
+        using var pause = api.Outbox.Pause();
         var product = await CreateProductAsync(api, stock: 5, price: ApprovedPrice);
         using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody((product.Id.Value, 2)), Guid.NewGuid().ToString());
         var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        await api.Outbox.RunOnceAsync();
         await WaitForOrderStatusAsync(client, placed.Id, "Paid");
 
         api.ProviderOutage.Script = request =>
@@ -208,8 +215,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task CancelOrder_WithAnActiveDelivery_CancelsItAtTheProvider()
     {
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice);
         using (client)
+        using (pause)
         {
             (await RequestDeliveryAsync(placed.Id)).IsSuccess.ShouldBeTrue();
 
@@ -228,8 +236,9 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     public async Task CancelOrder_OnceTheCourierHasTheParcel_IsRefusedByTheProvider()
     {
         // Silent delivery: no webhook moves the order to InDelivery, so the refusal comes from the provider itself.
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice, SilentDeliveryPostalCode);
+        var (client, placed, pause) = await PlacePaidOrderAsync(ApprovedPrice, SilentDeliveryPostalCode);
         using (client)
+        using (pause)
         {
             (await RequestDeliveryAsync(placed.Id)).IsSuccess.ShouldBeTrue();
             var delivery = await GetDeliveryAsync((await GetOrderAggregateAsync(api, placed.Id)).DeliveryId!.Value.Value);
@@ -244,15 +253,22 @@ public sealed class DeliveryFlowTests(ApiFixture api)
         }
     }
 
-    private async Task<(HttpClient Client, OrderDto Order)> PlacePaidOrderAsync(decimal price, string postalCode = "50000-000")
+    /// <summary>
+    /// A paid order with the outbox publisher paused: the OrderPlaced message is published by hand (payment created,
+    /// provider settles, webhook marks it paid) and the OrderPaid message stays queued, so the test drives the delivery
+    /// step itself. Dispose the returned handle to resume the publisher.
+    /// </summary>
+    private async Task<(HttpClient Client, OrderDto Order, IDisposable OutboxPause)> PlacePaidOrderAsync(decimal price, string postalCode = "50000-000")
     {
+        var pause = api.Outbox.Pause();
         var product = await CreateProductAsync(api, stock: 5, price: price);
         var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody(postalCode, (product.Id.Value, 1)), Guid.NewGuid().ToString());
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        await WaitForOrderStatusAsync(client, placed.Id, "Paid");
-        return (client, placed);
+        await api.Outbox.RunOnceAsync();
+        placed = await WaitForOrderStatusAsync(client, placed.Id, "Paid");
+        return (client, placed, pause);
     }
 
     private async Task<FulfillmentHub.Application.Common.Result<DeliveryRequestOutcome>> RequestDeliveryAsync(Guid orderId)

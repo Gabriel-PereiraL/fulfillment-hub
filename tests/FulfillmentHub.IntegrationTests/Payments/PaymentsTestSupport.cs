@@ -52,6 +52,26 @@ internal static class PaymentsTestSupport
     }
 
     /// <summary>The payment created for an order; the order only links to it once the provider accepted it.</summary>
+    /// <summary>Polls until the payment reaches <paramref name="status"/> (outbox handlers and provider settlement are asynchronous).</summary>
+    public static async Task<Payment> WaitForPaymentStatusAsync(ApiFixture api, Guid paymentId, PaymentStatus status)
+    {
+        var deadline = DateTimeOffset.UtcNow + PollTimeout;
+        Payment? last = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            last = await GetPaymentAsync(api, paymentId);
+            if (last.Status == status)
+            {
+                return last;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"Payment {paymentId} did not reach status '{status}' within {PollTimeout}; last status: {last?.Status}");
+    }
+
     public static async Task<Payment> GetPaymentForOrderAsync(ApiFixture api, Guid orderId)
     {
         using var scope = api.Services.CreateScope();

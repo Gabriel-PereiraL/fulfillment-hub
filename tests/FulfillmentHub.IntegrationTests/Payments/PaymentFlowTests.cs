@@ -30,20 +30,20 @@ public sealed class PaymentFlowTests(ApiFixture api)
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        placed.Status.ShouldBe("AwaitingPayment");
-        placed.PaymentId.ShouldNotBeNull();
+        placed.Status.ShouldBe("Created", "the payment is created by the outbox publisher, not inside the request (ADR-004)");
+        placed.PaymentId.ShouldBeNull();
 
         var paid = await WaitForOrderStatusAsync(client, placed.Id, "Paid");
-        paid.PaymentId.ShouldBe(placed.PaymentId);
+        paid.PaymentId.ShouldNotBeNull();
 
-        var payment = await GetPaymentAsync(api, placed.PaymentId.Value);
+        var payment = await GetPaymentAsync(api, paid.PaymentId.Value);
         payment.Status.ShouldBe(PaymentStatus.Paid);
         payment.Provider.ShouldBe(ProviderName);
         payment.ProviderPaymentId.ShouldNotBeNullOrWhiteSpace();
         payment.Attempts.ShouldHaveSingleItem().Outcome.ShouldBe(PaymentAttemptOutcome.Succeeded);
 
         var order = await GetOrderAggregateAsync(api, placed.Id);
-        order.StatusHistory.Select(h => h.To).ShouldBe([OrderStatus.Created, OrderStatus.AwaitingPayment, OrderStatus.Paid]);
+        order.StatusHistory.Select(h => h.To).Take(3).ShouldBe([OrderStatus.Created, OrderStatus.AwaitingPayment, OrderStatus.Paid]); // the outbox carries on to the delivery
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed class PaymentFlowTests(ApiFixture api)
 
         cancelled.CancellationReason.ShouldBe(nameof(OrderCancellationReason.PaymentFailed));
         (await GetStockAsync(api, product.Id)).ShouldBe(3, "a declined payment returns the reserved stock");
-        var payment = await GetPaymentAsync(api, placed.PaymentId!.Value);
+        var payment = await GetPaymentAsync(api, cancelled.PaymentId!.Value);
         payment.Status.ShouldBe(PaymentStatus.Failed);
         payment.FailureReason.ShouldBe("card_declined");
     }
@@ -72,8 +72,8 @@ public sealed class PaymentFlowTests(ApiFixture api)
         var product = await CreateProductAsync(api, stock: 5, price: SilentlyApprovedPrice);
         using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody((product.Id.Value, 1)), Guid.NewGuid().ToString());
-        var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        placed.Status.ShouldBe("AwaitingPayment");
+        var created = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var placed = await WaitForOrderStatusAsync(client, created.Id, "AwaitingPayment");
 
         // The provider settles the payment but never calls back (lost webhook).
         await Task.Delay(600, TestContext.Current.CancellationToken);
@@ -90,50 +90,13 @@ public sealed class PaymentFlowTests(ApiFixture api)
     }
 
     [Fact]
-    public async Task ProviderOutage_NeverFailsTheOrder_AndReconciliationRetriesTheCreation()
-    {
-        var product = await CreateProductAsync(api, stock: 5, price: ApprovedPrice);
-        using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
-
-        api.ProviderOutage.Enabled = true;
-        OrderDto placed;
-        try
-        {
-            var response = await PlaceOrderAsync(client, OrderBody((product.Id.Value, 1)), Guid.NewGuid().ToString());
-            response.StatusCode.ShouldBe(HttpStatusCode.Created, "the order is durable before the provider is called");
-            placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        }
-        finally
-        {
-            api.ProviderOutage.Enabled = false;
-        }
-
-        placed.Status.ShouldBe("Created", "the order only moves to AwaitingPayment once the provider accepted the payment");
-        placed.PaymentId.ShouldBeNull();
-        var payment = await GetPaymentForOrderAsync(api, placed.Id);
-        payment.Status.ShouldBe(PaymentStatus.Pending);
-        payment.ProviderPaymentId.ShouldBeNull();
-        payment.Attempts.ShouldHaveSingleItem().Outcome.ShouldBe(PaymentAttemptOutcome.TransientFailure);
-
-        using var scope = api.Services.CreateScope();
-        var summary = await scope.ServiceProvider.GetRequiredService<ReconcilePaymentsHandler>()
-            .HandleAsync(pendingFor: TimeSpan.Zero, batchSize: 100, TestContext.Current.CancellationToken);
-
-        summary.Retried.ShouldBeGreaterThanOrEqualTo(1);
-        var paid = await WaitForOrderStatusAsync(client, placed.Id, "Paid");
-        paid.PaymentId.ShouldBe(payment.Id.Value, "the same payment is completed, not a second one");
-        payment = await GetPaymentForOrderAsync(api, placed.Id);
-        payment.Attempts.Count.ShouldBe(2);
-        payment.Attempts[^1].Outcome.ShouldBe(PaymentAttemptOutcome.Succeeded);
-    }
-
-    [Fact]
-    public async Task PaymentCapturedAfterCustomerCancelled_KeepsOrderCancelled_AndRecordsThePayment()
+    public async Task PaymentCapturedAfterCustomerCancelled_KeepsOrderCancelled_AndRefundsIt()
     {
         var product = await CreateProductAsync(api, stock: 5, price: SilentlyApprovedPrice);
         using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(client, OrderBody((product.Id.Value, 1)), Guid.NewGuid().ToString());
-        var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var created = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var placed = await WaitForOrderStatusAsync(client, created.Id, "AwaitingPayment");
 
         var cancel = await client.PostAsJsonAsync($"/api/v1/orders/{placed.Id}/cancel", new { note = "changed my mind" }, TestContext.Current.CancellationToken);
         cancel.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -145,8 +108,11 @@ public sealed class PaymentFlowTests(ApiFixture api)
 
         var order = await GetOrderAggregateAsync(api, placed.Id);
         order.Status.ShouldBe(OrderStatus.Cancelled, "a late capture never resurrects a cancelled order");
-        (await GetPaymentAsync(api, placed.PaymentId!.Value)).Status.ShouldBe(PaymentStatus.Paid, "the money was taken and must be refunded (BL-244)");
         (await GetStockAsync(api, product.Id)).ShouldBe(5);
+
+        // PaymentPaid → outbox → refund (BL-244): the money goes back without anyone touching it.
+        var refunded = await WaitForPaymentStatusAsync(api, placed.PaymentId!.Value, PaymentStatus.Refunded);
+        refunded.Status.ShouldBe(PaymentStatus.Refunded);
     }
 
     [Fact]
@@ -155,7 +121,8 @@ public sealed class PaymentFlowTests(ApiFixture api)
         var product = await CreateProductAsync(api, stock: 5, price: SilentlyApprovedPrice);
         using var customer = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(customer, OrderBody((product.Id.Value, 1)), Guid.NewGuid().ToString());
-        var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var created = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var placed = await WaitForOrderStatusAsync(customer, created.Id, "AwaitingPayment");
         var providerPaymentId = (await GetPaymentAsync(api, placed.PaymentId!.Value)).ProviderPaymentId!;
         await Task.Delay(300, TestContext.Current.CancellationToken); // let the provider settle (silently)
 
@@ -182,8 +149,8 @@ public sealed class PaymentFlowTests(ApiFixture api)
         var product = await CreateProductAsync(api, stock: 5, price: DeclinedPrice);
         using var customer = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var response = await PlaceOrderAsync(customer, OrderBody((product.Id.Value, 1)), Guid.NewGuid().ToString());
-        var placed = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
-        await WaitForOrderStatusAsync(customer, placed.Id, "Cancelled");
+        var created = (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
+        var placed = await WaitForOrderStatusAsync(customer, created.Id, "Cancelled");
         var providerPaymentId = (await GetPaymentAsync(api, placed.PaymentId!.Value)).ProviderPaymentId!;
 
         var eventId = "evt_forged_" + Guid.NewGuid().ToString("N")[..12];

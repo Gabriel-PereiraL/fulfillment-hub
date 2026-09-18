@@ -24,8 +24,8 @@ public sealed class PlaceOrderTests(ApiFixture api)
         order.ShouldNotBeNull();
         response.Headers.Location!.ToString().ShouldEndWith($"/api/v1/orders/{order.Id}");
         order.Number.ShouldBeGreaterThanOrEqualTo(1000);
-        order.Status.ShouldBe("AwaitingPayment", "the payment is initiated with the simulated provider right after the order is committed");
-        order.PaymentId.ShouldNotBeNull();
+        order.Status.ShouldBe("Created", "the payment is created asynchronously from the outbox (ADR-004)");
+        order.PaymentId.ShouldBeNull();
         order.Subtotal.Amount.ShouldBe(39.8m);
         order.DeliveryFee.ShouldNotBeNull("the delivery is quoted at checkout (D-51)");
         order.Total.Amount.ShouldBe(39.8m + order.DeliveryFee.Amount);
@@ -172,7 +172,7 @@ public sealed class PlaceOrderTests(ApiFixture api)
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var order = await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken);
-        order!.Status.ShouldBe("AwaitingPayment");
+        order!.Status.ShouldBe("Created");
         order.Subtotal.Amount.ShouldBe(10m);
         order.Total.Amount.ShouldBe(10m + order.DeliveryFee!.Amount);
         order.CustomerId.ShouldNotBe((Guid)body.customerId);

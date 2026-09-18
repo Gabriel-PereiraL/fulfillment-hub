@@ -7,6 +7,7 @@ using FulfillmentHub.Application.Payments;
 using FulfillmentHub.Domain.Common;
 using FulfillmentHub.Domain.Customers;
 using FulfillmentHub.Domain.Identity;
+using FulfillmentHub.Infrastructure.Outbox;
 using FulfillmentHub.Infrastructure.Persistence;
 using FulfillmentHub.Infrastructure.Providers.Deliveries;
 using FulfillmentHub.Infrastructure.Providers.Payments;
@@ -50,6 +51,9 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Flip <see cref="ProviderOutage.Enabled"/> to make the provider answer 503 to the API.</summary>
     public ProviderOutage ProviderOutage => _providerOutage;
 
+    /// <summary>Pause/drive the outbox publisher hosted in the test API.</summary>
+    public OutboxControl Outbox => Services.GetRequiredService<OutboxControl>();
+
     public async ValueTask InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -57,6 +61,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         using var scope = Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<FulfillmentHubDbContext>();
         await dbContext.Database.MigrateAsync();
+        Outbox.Start(); // the hosted publisher waits for the schema
     }
 
     public override async ValueTask DisposeAsync()
@@ -130,16 +135,26 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
                 ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
                 ["Providers:Payment:RetryBaseDelayMs"] = "10",
+                ["Providers:Payment:CircuitBreakDurationSeconds"] = "1",
                 ["Providers:Delivery:BaseUrl"] = "http://provider.test",
                 ["Providers:Delivery:ClientId"] = ProviderSimulatorFactory.DeliveryClientId,
                 ["Providers:Delivery:ClientSecret"] = ProviderSimulatorFactory.DeliveryClientSecret,
                 ["Providers:Delivery:CustomerId"] = ProviderSimulatorFactory.DeliveryCustomerId,
                 ["Providers:Delivery:WebhookSigningKey"] = ProviderSimulatorFactory.DeliveryWebhookSigningKey,
                 ["Providers:Delivery:RetryBaseDelayMs"] = "10",
+                ["Providers:Delivery:CircuitBreakDurationSeconds"] = "1",
+                ["Outbox:MaxAttempts"] = "3",
+                ["Outbox:BaseDelaySeconds"] = "1",
+                ["Outbox:MaxDelaySeconds"] = "2",
             }));
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IStartupFilter, TestClientAddressMiddleware.StartupFilter>();
+
+            // Run the Worker's outbox publisher inside the test API so flows progress like in production (pausable per test).
+            services.AddFulfillmentHubOutboxPublisher();
+            services.AddSingleton<OutboxControl>();
+            services.AddHostedService<OutboxControl.PausablePublisher>();
 
             // Same as the Development default: unreadable bodies throw and must be turned into 400 by our exception handler.
             services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
