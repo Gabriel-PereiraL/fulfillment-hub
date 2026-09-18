@@ -49,6 +49,7 @@ public static class TelemetryHostBuilderExtensions
             .WithTracing(tracing => tracing
                 .AddSource(TelemetryNames.ActivitySource)
                 .AddHttpClientInstrumentation()
+                .AddAWSInstrumentation() // SQS calls (ADR-005)
                 .AddNpgsql())
             .WithMetrics(metrics => metrics
                 .AddHttpClientInstrumentation()

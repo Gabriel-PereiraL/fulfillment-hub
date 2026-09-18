@@ -6,6 +6,7 @@ using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Domain.Orders;
 using FulfillmentHub.Domain.Payments;
 using FulfillmentHub.Infrastructure.Idempotency;
+using FulfillmentHub.Infrastructure.Messaging;
 using FulfillmentHub.Infrastructure.Outbox;
 using FulfillmentHub.Infrastructure.Persistence.Conventions;
 using FulfillmentHub.Infrastructure.Webhooks;
@@ -39,6 +40,8 @@ public sealed class FulfillmentHubDbContext(DbContextOptions<FulfillmentHubDbCon
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

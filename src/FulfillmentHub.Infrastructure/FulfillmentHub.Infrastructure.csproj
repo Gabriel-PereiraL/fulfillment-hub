@@ -18,6 +18,9 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    <!-- ADR-005: SQS via the AWS SDK (LocalStack locally); OTel instrumentation for the SDK calls. -->
+    <PackageReference Include="AWSSDK.SQS" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AWS" />
     <PackageReference Include="Npgsql.OpenTelemetry" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>

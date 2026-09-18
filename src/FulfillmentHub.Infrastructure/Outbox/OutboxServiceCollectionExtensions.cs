@@ -12,6 +12,7 @@ public static class OutboxServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddSingleton<OutboxDispatcher>();
         services.AddScoped<OutboxProcessor>();
 
         return services;

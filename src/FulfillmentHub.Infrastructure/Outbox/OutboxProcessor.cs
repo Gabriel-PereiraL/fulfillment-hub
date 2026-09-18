@@ -1,9 +1,8 @@
 using System.Diagnostics;
+using FulfillmentHub.Application.Messaging;
 using FulfillmentHub.Application.Outbox;
 using FulfillmentHub.Infrastructure.Persistence;
-using FulfillmentHub.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -19,15 +18,13 @@ public sealed record OutboxBatchSummary(int Claimed, int Processed, int Retried,
 /// </summary>
 public sealed partial class OutboxProcessor(
     FulfillmentHubDbContext db,
-    IServiceScopeFactory scopeFactory,
-    OutboxEventSerializer serializer,
+    OutboxDispatcher dispatcher,
+    IMessagePublisher publisher,
     IOptions<OutboxOptions> options,
     OutboxMetrics metrics,
     TimeProvider timeProvider,
     ILogger<OutboxProcessor> logger)
 {
-    private static readonly ActivitySource ActivitySource = new(TelemetryNames.ActivitySource);
-
     public async Task<OutboxBatchSummary> ProcessBatchAsync(CancellationToken cancellationToken)
     {
         var settings = options.Value;
@@ -106,36 +103,27 @@ public sealed partial class OutboxProcessor(
         return messages;
     }
 
+    /// <summary>
+    /// With messaging on, "publishing" means handing the envelope to the queue (the consumer runs the handler with its own
+    /// deduplication); with messaging off the handler runs right here (Phase 8 mode, D-70).
+    /// </summary>
     private async Task<OutboxHandling> DispatchAsync(OutboxMessage message, CancellationToken cancellationToken)
     {
-        using var activity = ActivitySource.StartActivity($"Outbox {message.Type}", ActivityKind.Consumer, message.TraceParent);
-        activity?.SetTag("messaging.message.id", message.Id);
-        activity?.SetTag("outbox.attempt", message.Attempts + 1);
-
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var domainEvent = serializer.Deserialize(message.Type, message.Payload);
-            if (domainEvent is null)
+            if (!publisher.IsEnabled)
             {
-                return new OutboxHandling.Retry($"unknown event type '{message.Type}'");
+                return await dispatcher.DispatchAsync(message.Type, message.Payload, message.TraceParent, dedup: null, cancellationToken);
             }
 
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var handler = scope.ServiceProvider.GetKeyedService<IOutboxHandler>(message.Type);
-
-            if (handler is null)
-            {
-                // No consumer for this event (yet): nothing to do, and no point retrying.
-                return OutboxHandling.Completed;
-            }
-
-            return await handler.HandleAsync(domainEvent, cancellationToken);
+            var envelope = new MessageEnvelope(message.Id.ToString(), message.Type, message.Payload, message.OccurredAt, message.CorrelationId, message.TraceParent);
+            await publisher.PublishAsync(Queues.DomainEvents, envelope, cancellationToken);
+            return OutboxHandling.Completed;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, exception.GetType().Name);
-            LogHandlerThrew(exception, message.Id, message.Type);
+            LogPublishFailed(exception, message.Id, message.Type);
             return new OutboxHandling.Retry(exception.GetType().Name + ": " + exception.Message);
         }
         finally
@@ -165,6 +153,6 @@ public sealed partial class OutboxProcessor(
     [LoggerMessage(EventId = 7001, Level = LogLevel.Error, Message = "Outbox message {MessageId} ({Type}) parked as Failed after {Attempts} attempts: {Reason}")]
     private partial void LogFailed(Guid messageId, string type, int attempts, string reason);
 
-    [LoggerMessage(EventId = 7002, Level = LogLevel.Error, Message = "Handler for outbox message {MessageId} ({Type}) threw")]
-    private partial void LogHandlerThrew(Exception exception, Guid messageId, string type);
+    [LoggerMessage(EventId = 7002, Level = LogLevel.Error, Message = "Publishing outbox message {MessageId} ({Type}) to the queue failed")]
+    private partial void LogPublishFailed(Exception exception, Guid messageId, string type);
 }

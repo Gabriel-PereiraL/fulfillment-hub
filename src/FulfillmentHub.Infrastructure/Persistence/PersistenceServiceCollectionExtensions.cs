@@ -46,6 +46,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IdempotencyStore>();
         services.AddSingleton<WebhookInbox>();
         services.AddSingleton<WebhookSignatureVerifier>();
+        services.AddSingleton<WebhookEventProcessor>();
 
         return services;
     }
