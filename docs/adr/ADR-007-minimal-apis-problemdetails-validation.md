@@ -1,31 +1,31 @@
-# ADR-007 — Minimal APIs, ProblemDetails, validação nativa, OpenAPI + Scalar
+# ADR-007 — Minimal APIs, ProblemDetails, native validation, OpenAPI + Scalar
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-Precisamos de uma API HTTP moderna, documentada, com erros padronizados e validação de entrada, com o mínimo de dependências.
+## Context
+We need a modern, documented HTTP API with standardized errors and input validation, with the minimum of dependencies.
 
-## Opções
-- Controllers MVC vs. **Minimal APIs**.
-- Erros ad hoc vs. **ProblemDetails (RFC 9457)**.
-- FluentValidation vs. DataAnnotations manual vs. **validação nativa de Minimal APIs do .NET 10** (`AddValidation()`).
-- Swashbuckle vs. **`Microsoft.AspNetCore.OpenApi` nativo + Scalar** (UI).
-- Auto-discovery de endpoints por reflexão vs. **registro explícito** por módulo.
+## Options
+- MVC controllers vs. **Minimal APIs**.
+- Ad hoc errors vs. **ProblemDetails (RFC 9457)**.
+- FluentValidation vs. manual DataAnnotations vs. **the native Minimal APIs validation of .NET 10** (`AddValidation()`).
+- Swashbuckle vs. **native `Microsoft.AspNetCore.OpenApi` + Scalar** (UI).
+- Endpoint auto-discovery by reflection vs. **explicit registration** per module.
 
-## Decisão
-Minimal APIs com `MapGroup` por módulo e `TypedResults`; `AddProblemDetails()` + `IExceptionHandler`; validação nativa
-(.NET 10) com DataAnnotations nos records de request + invariantes no domínio; OpenAPI nativo + Scalar em Development;
-registro explícito (`app.MapOrdersEndpoints()`); prefixo fixo `/api/v1`.
+## Decision
+Minimal APIs with a `MapGroup` per module and `TypedResults`; `AddProblemDetails()` + `IExceptionHandler`; native validation
+(.NET 10) with DataAnnotations on the request records + invariants in the domain; native OpenAPI + Scalar in Development;
+explicit registration (`app.MapOrdersEndpoints()`); fixed `/api/v1` prefix.
 
-## Motivo
-Menos dependências, tipagem forte de respostas (`Results<Created<T>, ValidationProblem>`), documentação gerada dos metadados,
-erros uniformes. Registro explícito evita mágica de reflexão.
+## Rationale
+Fewer dependencies, strongly-typed responses (`Results<Created<T>, ValidationProblem>`), documentation generated from metadata,
+uniform errors. Explicit registration avoids reflection magic.
 
 ## Trade-offs
-- Controllers têm mais material didático; Minimal APIs exigem disciplina de organização (resolvido com classes `*Endpoints`).
-- Validação nativa é nova (.NET 10): se faltar recurso (validação assíncrona/condicional), reavaliar FluentValidation com justificativa.
-- Scalar é dependência de UI só em dev.
+- Controllers have more learning material; Minimal APIs require organizational discipline (solved with `*Endpoints` classes).
+- Native validation is new (.NET 10): if a feature is missing (asynchronous/conditional validation), re-evaluate FluentValidation with a justification.
+- Scalar is a UI dependency in dev only.
 
-## Consequências
-- Todo endpoint tem `WithName/WithSummary/Produces*`, autorização declarada e teste de integração.
-- Erros nunca vazam stack/detalhes fora de Development.
+## Consequences
+- Every endpoint has `WithName/WithSummary/Produces*`, declared authorization and an integration test.
+- Errors never leak stack traces/details outside Development.

@@ -1,144 +1,146 @@
 # FulfillmentHub
 
-Backend de **orquestração de pedidos, pagamentos e entregas** em **C# 14 / .NET 10**, construído como monólito modular
-para demonstrar práticas de engenharia backend orientadas a problemas reais: idempotência, concorrência, consistência
-entre banco e efeitos externos (transactional outbox), mensageria com consumidores idempotentes, integrações resilientes,
-webhooks assinados, segurança e observabilidade — tudo coberto por testes que provam o comportamento.
+A backend for **orchestrating orders, payments and deliveries**, written in **C# 14 / .NET 10** as a modular monolith.
+It exists to show how real backend problems are handled in code: idempotency, concurrency, consistency between the
+database and external effects (transactional outbox), messaging with idempotent consumers, resilient HTTP integrations,
+signed webhooks, security and observability — each of them covered by tests that prove the behaviour.
 
 > This is an engineering portfolio project built to demonstrate production-oriented backend practices in C#/.NET.
-> It is not a commercial product and does not represent a real logistics/payment operation.
+> It is not a commercial product and does not represent a real logistics or payment operation.
 
-**Status (2026-09-18):** fases 0–9 de 20 concluídas. Um pedido percorre `Created → AwaitingPayment → Paid →
-DeliveryRequested → InDelivery → Delivered` de ponta a ponta, com os efeitos externos saindo pela outbox e por filas SQS
-(LocalStack) e os providers respondendo por webhooks assinados. Próxima fase: **10 — Security hardening**.
-Estado detalhado em [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plano em [docs/ROADMAP.md](docs/ROADMAP.md).
+**Status (2026-09-18):** phases 0–9 of 20 complete. An order travels `Created → AwaitingPayment → Paid →
+DeliveryRequested → InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues
+(LocalStack) and the providers answering through signed webhooks. Next phase: **10 — Security hardening**.
+Detailed state in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.
 > The simulators reproduce a limited subset of public API contracts for educational and portfolio purposes only.
 > No real deliveries, charges, credentials or customers are involved.
 
-## Fluxo
+## Flow
 
 ```
-POST /orders ──► reserva de estoque (xmin) + cotação de entrega + OrderPlaced na outbox   [mesma transação]
+POST /orders ──► stock reservation (xmin) + delivery quote + OrderPlaced in the outbox   [same transaction]
       │
-      ▼ Worker publica a outbox no SQS (fh-domain-events) e consome com deduplicação
-OrderPlaced ──► pagamento criado no provider simulado ──► webhook HMAC "paid" ──► Paid (+ OrderPaid)
-OrderPaid   ──► entrega criada no provider simulado "Uber-like" ──► webhooks de status ──► InDelivery → Delivered
-OrderCancelled / PaymentPaid tardio ──► estorno automático
-Reconciliação periódica cobre webhooks perdidos; DLQ + admin cobrem mensagens que falham.
+      ▼ the Worker publishes the outbox to SQS (fh-domain-events) and consumes it with deduplication
+OrderPlaced ──► payment created at the simulated provider ──► HMAC webhook "paid" ──► Paid (+ OrderPaid)
+OrderPaid   ──► delivery created at the simulated "Uber-like" provider ──► status webhooks ──► InDelivery → Delivered
+OrderCancelled / late PaymentPaid ──► automatic refund
+Periodic reconciliation covers lost webhooks; the DLQ and the admin endpoints cover messages that fail.
 ```
 
-## Implementado
+## Implemented
 
-- **Pedidos**: `POST /orders` idempotente por `Idempotency-Key` (replay da resposta, 422 em payload divergente, 409 em
-  andamento), reserva de estoque com concorrência otimista (`xmin`) provada por teste de 20 compradores concorrentes,
-  cotação da entrega no checkout com taxa estimada como fallback, cancelamento com devolução de estoque, paginação keyset.
-- **Autenticação/autorização**: JWT HS256 (`JsonWebTokenHandler`), `PasswordHasher` nativo, policies por papel,
-  deny-by-default, rate limit de login, falhas de login indistinguíveis, autorização por recurso (cliente só vê o que é seu).
-- **Pagamentos**: provider simulado com contrato próprio; typed `HttpClient` com `Microsoft.Extensions.Http.Resilience`
-  (timeout total → retry exponencial com jitter e `Retry-After` → circuit breaker → timeout por tentativa); webhooks com
-  HMAC-SHA256 em tempo constante, tolerância de timestamp, inbox com deduplicação, verificação `GET` antes de aplicar
-  `paid`; reconciliação de pagamentos pendentes; estorno automático de pedidos cancelados após captura.
-- **Entregas**: simulador que reproduz um subconjunto documentado do contrato público Uber Direct (token, quote, create,
-  get, cancel, `event.delivery_status`); token cache com renovação; recotação em `expired_quote`; `409 duplicate_delivery`
-  reconciliado adotando a entrega existente; eventos fora de ordem/duplicados/atrasados registrados sem regredir estado;
-  reconciliação de entregas silenciosas.
-- **Transactional outbox**: eventos de domínio gravados no mesmo `SaveChanges` do agregado; publisher com
-  `FOR UPDATE SKIP LOCKED` + lease, backoff exponencial, `Failed` após N tentativas, endpoints admin para listar e
-  reprocessar; nenhum efeito externo dentro de um request HTTP (exceções documentadas).
-- **Mensageria (SQS)**: filas `fh-domain-events` e `fh-webhooks-inbound` com dead-letter queues e redrive policy,
-  consumidores com long polling, concorrência limitada, backoff por visibilidade, deduplicação persistida na mesma
-  transação do efeito; LocalStack no compose; modo sem broker (in-process) por configuração.
-- **Observabilidade**: logs estruturados com `LoggerMessage` (sem PII/segredos), OpenTelemetry (ASP.NET Core,
-  HttpClient, Npgsql, AWS SDK, runtime), spans próprios para providers/outbox/filas com propagação de trace pela fila,
-  métricas de negócio e operação, correlation id, Aspire Dashboard local como UI de OTLP.
-- **Testes**: 225 (125 unit, 5 architecture, 95 integration) — os de integração sobem a API, o Worker e o simulador
-  in-process contra PostgreSQL e LocalStack reais via Testcontainers, com webhooks trafegando entre os hosts.
+- **Orders**: `POST /orders` idempotent by `Idempotency-Key` (response replay, 422 on a different payload, 409 while in
+  progress), stock reservation with optimistic concurrency (`xmin`) proven by a test with 20 concurrent buyers, delivery
+  quote at checkout with an estimated fee as fallback, cancellation with stock return, keyset pagination.
+- **Authentication/authorization**: JWT HS256 (`JsonWebTokenHandler`), the built-in `PasswordHasher`, per-role policies,
+  deny by default, login rate limiting, indistinguishable login failures, resource authorization (a customer only sees
+  their own data).
+- **Payments**: simulated provider with its own contract; typed `HttpClient` with `Microsoft.Extensions.Http.Resilience`
+  (total timeout → exponential retry with jitter and `Retry-After` → circuit breaker → per-attempt timeout); webhooks with
+  constant-time HMAC-SHA256, timestamp tolerance, inbox with deduplication, `GET` verification before applying `paid`;
+  reconciliation of pending payments; automatic refund of orders cancelled after capture.
+- **Deliveries**: a simulator reproducing a documented subset of the public Uber Direct contract (token, quote, create,
+  get, cancel, `event.delivery_status`); token cache with renewal; requote on `expired_quote`; `409 duplicate_delivery`
+  reconciled by adopting the existing delivery; out-of-order/duplicate/delayed events recorded without regressing state;
+  reconciliation of silent deliveries.
+- **Transactional outbox**: domain events written in the same `SaveChanges` as the aggregate; publisher with
+  `FOR UPDATE SKIP LOCKED` + lease, exponential backoff, `Failed` after N attempts, admin endpoints to list and requeue;
+  no external effect inside an HTTP request (documented exceptions).
+- **Messaging (SQS)**: `fh-domain-events` and `fh-webhooks-inbound` queues with dead-letter queues and a redrive policy,
+  consumers with long polling, bounded concurrency, visibility backoff, deduplication persisted in the same transaction
+  as the effect; LocalStack in the compose; a broker-less (in-process) mode by configuration.
+- **Observability**: structured logging with `LoggerMessage` (no PII/secrets), OpenTelemetry (ASP.NET Core, HttpClient,
+  Npgsql, AWS SDK, runtime), custom spans for providers/outbox/queues with trace propagation through the queue,
+  business and operational metrics, correlation id, the Aspire Dashboard as the local OTLP UI.
+- **Tests**: 225 (125 unit, 5 architecture, 95 integration) — the integration tests host the API, the Worker and the
+  simulator in-process against real PostgreSQL and LocalStack containers (Testcontainers), with webhooks travelling
+  between the hosts.
 
 ## Stack
 
-C# 14 · .NET 10 · ASP.NET Core Minimal APIs (validação nativa, ProblemDetails, OpenAPI + Scalar em dev) · EF Core 10 +
+C# 14 · .NET 10 · ASP.NET Core Minimal APIs (native validation, ProblemDetails, OpenAPI + Scalar in dev) · EF Core 10 +
 Npgsql/PostgreSQL 17 · `Microsoft.Extensions.Http.Resilience` (Polly v8) · AWS SDK for .NET (SQS) + LocalStack ·
 OpenTelemetry · xUnit v3 + Shouldly + Testcontainers + NetArchTest · Docker Compose.
 
-Sem MediatR, AutoMapper, FluentValidation, repositórios genéricos ou frameworks de mensageria: cada decisão está
-justificada em [docs/DECISIONS.md](docs/DECISIONS.md) e nos [ADRs](docs/adr/).
+No MediatR, AutoMapper, FluentValidation, generic repositories or messaging frameworks: every choice is justified in
+[docs/DECISIONS.md](docs/DECISIONS.md) and in the [ADRs](docs/adr/).
 
-## Estrutura
+## Project structure
 
 ```
 src/
-  FulfillmentHub.Domain            agregados, value objects, máquinas de estado, eventos de domínio
-  FulfillmentHub.Application       casos de uso, ports (providers, mensageria), handlers da outbox, métricas
-  FulfillmentHub.Infrastructure    EF Core + migrations, outbox, SQS, clientes HTTP dos providers, JWT, telemetria
-  FulfillmentHub.Api               Minimal APIs, auth, idempotência, webhooks, admin
-  FulfillmentHub.Worker            publisher da outbox, consumidores SQS, reconciliações, varreduras
-  FulfillmentHub.ProviderSimulator providers simulados de pagamento e entrega (host separado)
+  FulfillmentHub.Domain            aggregates, value objects, state machines, domain events
+  FulfillmentHub.Application       use cases, ports (providers, messaging), outbox handlers, metrics
+  FulfillmentHub.Infrastructure    EF Core + migrations, outbox, SQS, provider HTTP clients, JWT, telemetry
+  FulfillmentHub.Api               Minimal APIs, auth, idempotency, webhooks, admin
+  FulfillmentHub.Worker            outbox publisher, SQS consumers, reconciliations, sweeps
+  FulfillmentHub.ProviderSimulator simulated payment and delivery providers (separate host)
 tests/
-  FulfillmentHub.UnitTests         domínio, clientes de provider contra transporte scriptado
-  FulfillmentHub.IntegrationTests  API + Worker + simulador in-process, PostgreSQL e LocalStack (Testcontainers)
-  FulfillmentHub.ArchitectureTests dependências entre camadas
-docs/                               produto, arquitetura, domínio, integrações, segurança, observabilidade, ADRs
+  FulfillmentHub.UnitTests         domain, provider clients against a scripted transport
+  FulfillmentHub.IntegrationTests  API + Worker + in-process simulator, PostgreSQL and LocalStack (Testcontainers)
+  FulfillmentHub.ArchitectureTests dependencies between layers
+docs/                               product, architecture, domain, integrations, security, observability, ADRs
 ```
 
-## Engenharia demonstrada
+## Engineering highlights
 
-| Tema | Onde olhar |
+| Area | Where to look |
 |---|---|
-| Idempotência de API (replay, 422, 409 concorrente) | `Api/Idempotency`, `IntegrationTests/Orders/PlaceOrderTests` |
-| Concorrência otimista sob carga | `PlaceOrderHandler`, `PlaceOrder_TwentyBuyersForTheLastUnit_ExactlyOneSucceeds` |
-| Retry/backoff/jitter/circuit breaker (abre **e** fecha) | `Infrastructure/Providers`, `UnitTests/Payments`, `UnitTests/Deliveries` |
-| Webhooks HMAC, inbox, fora de ordem, reconciliação | `Api/Webhooks`, `Infrastructure/Webhooks`, `IntegrationTests/Payments`, `IntegrationTests/Deliveries` |
-| Transactional outbox (commit atômico, retry, DLQ lógica, requeue) | `Infrastructure/Outbox`, `IntegrationTests/Outbox` |
-| SQS: consumidor idempotente e dead-letter | `Worker/Messaging`, `IntegrationTests/Messaging` |
-| Segurança (JWT, hashing, deny-by-default, rate limit) | `Api/Identity`, [docs/SECURITY.md](docs/SECURITY.md) |
-| Observabilidade | `Infrastructure/Telemetry`, [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
+| API idempotency (replay, 422, concurrent 409) | [Api/Idempotency](src/FulfillmentHub.Api/Idempotency), [PlaceOrderTests](tests/FulfillmentHub.IntegrationTests/Orders/PlaceOrderTests.cs) |
+| Optimistic concurrency under load | `PlaceOrderHandler`, `PlaceOrder_TwentyBuyersForTheLastUnit_ExactlyOneSucceeds` |
+| Retry, backoff, jitter, circuit breaker (opens **and** closes) | [Infrastructure/Providers](src/FulfillmentHub.Infrastructure/Providers), [UnitTests/Payments](tests/FulfillmentHub.UnitTests/Payments), [UnitTests/Deliveries](tests/FulfillmentHub.UnitTests/Deliveries) |
+| HMAC webhooks, inbox, out-of-order events, reconciliation | [Api/Webhooks](src/FulfillmentHub.Api/Webhooks), [Infrastructure/Webhooks](src/FulfillmentHub.Infrastructure/Webhooks), [IntegrationTests/Payments](tests/FulfillmentHub.IntegrationTests/Payments), [IntegrationTests/Deliveries](tests/FulfillmentHub.IntegrationTests/Deliveries) |
+| Transactional outbox (atomic commit, retry, logical DLQ, requeue) | [Infrastructure/Outbox](src/FulfillmentHub.Infrastructure/Outbox), [OutboxTests](tests/FulfillmentHub.IntegrationTests/Outbox/OutboxTests.cs) |
+| SQS: idempotent consumer and dead-letter queue | [Worker/Messaging](src/FulfillmentHub.Worker/Messaging), [SqsMessagingTests](tests/FulfillmentHub.IntegrationTests/Messaging/SqsMessagingTests.cs) |
+| Security (JWT, password hashing, deny by default, rate limiting) | [Api/Identity](src/FulfillmentHub.Api/Identity), [docs/SECURITY.md](docs/SECURITY.md) |
+| Observability | [Infrastructure/Telemetry](src/FulfillmentHub.Infrastructure/Telemetry), [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
 
-## Roadmap (ainda não implementado)
+## Roadmap (not implemented yet)
 
-Security hardening (headers, CORS, checklist OWASP com evidências) → observability hardening (runbooks, alertas) →
-testing hardening (E2E, caos) → imagens Docker e compose completo → CI (GitHub Actions) → IaC (Terraform) e deploy na
-AWS (ECS Fargate, RDS, SQS) → Admin/Ops UI (Blazor) → testes de performance/resiliência → release do portfólio.
-Detalhes e critérios de aceite por fase em [docs/ROADMAP.md](docs/ROADMAP.md).
+Security hardening (headers, CORS, OWASP checklist with evidence) → observability hardening (runbooks, alerts) →
+testing hardening (E2E, chaos) → Docker images and full compose → CI (GitHub Actions) → IaC (Terraform) and AWS
+deployment (ECS Fargate, RDS, SQS) → Admin/Ops UI (Blazor) → performance and resilience tests → portfolio release.
+Details and acceptance criteria per phase in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Documentação
+## Documentation
 
-Índice em [docs/README.md](docs/README.md). Comece por [PRODUCT.md](docs/PRODUCT.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-e [DOMAIN.md](docs/DOMAIN.md); integrações e o contrato "real vs. simulado" em [INTEGRATIONS.md](docs/INTEGRATIONS.md);
-decisões em [DECISIONS.md](docs/DECISIONS.md) e [adr/](docs/adr/).
+Index in [docs/README.md](docs/README.md). Start with [PRODUCT.md](docs/PRODUCT.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+and [DOMAIN.md](docs/DOMAIN.md); integrations and the "real vs. simulated" contract in [INTEGRATIONS.md](docs/INTEGRATIONS.md);
+decisions in [DECISIONS.md](docs/DECISIONS.md) and [adr/](docs/adr/).
 
-## Executando localmente
+## Running locally
 
-Pré-requisitos: .NET SDK 10, Docker Desktop. Passo a passo completo em [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Prerequisites: .NET SDK 10, Docker Desktop. Full walkthrough in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ```bash
-cp .env.example .env                        # senha local do Postgres (não é um segredo real)
-docker compose --profile deps up -d         # PostgreSQL, LocalStack (SQS) e Aspire Dashboard
+cp .env.example .env                        # local Postgres password (not a real secret)
+docker compose --profile deps up -d         # PostgreSQL, LocalStack (SQS) and the Aspire Dashboard
 dotnet tool restore
-# segredos de desenvolvimento ficam em user-secrets, nunca em arquivos versionados:
+# development secrets live in user-secrets, never in versioned files:
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<POSTGRES_PASSWORD>" --project src/FulfillmentHub.Api
-dotnet user-secrets set "Jwt:SigningKey" "<64 chars aleatórios>" --project src/FulfillmentHub.Api
-# (demais chaves — senhas do seed, credenciais dev-only dos simuladores — listadas em docs/DEVELOPMENT.md)
+dotnet user-secrets set "Jwt:SigningKey" "<64 random chars>" --project src/FulfillmentHub.Api
+# (remaining keys — seed passwords, dev-only simulator credentials — listed in docs/DEVELOPMENT.md)
 dotnet ef database update --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
-dotnet run --project src/FulfillmentHub.Api -- seed      # dados fictícios de desenvolvimento
+dotnet run --project src/FulfillmentHub.Api -- seed      # fictional development data
 dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100
 dotnet run --project src/FulfillmentHub.Worker
 dotnet run --project src/FulfillmentHub.Api               # http://localhost:5000/scalar/v1
 ```
 
-## Testes
+## Tests
 
 ```bash
-dotnet test --solution FulfillmentHub.slnx   # 225 testes; Docker necessário para os de integração
+dotnet test --solution FulfillmentHub.slnx   # 225 tests; Docker required for the integration tests
 ```
 
 ## Disclaimer
 
-Os providers de pagamento e entrega são **simulados** (`FulfillmentHub.ProviderSimulator`). O de entrega reproduz um
-subconjunto documentado do contrato público da Uber Direct API apenas para fins educacionais; o de pagamento tem um
-contrato próprio inspirado no ciclo de vida comum de PSPs. Nada aqui se conecta a infraestrutura real, movimenta dinheiro
-ou envolve clientes reais.
+The payment and delivery providers are **simulated** (`FulfillmentHub.ProviderSimulator`). The delivery one reproduces a
+documented subset of the public Uber Direct API contract for educational purposes only; the payment one has its own
+contract inspired by the lifecycle common to PSPs. Nothing here connects to real infrastructure, moves money or involves
+real customers.
 
 ## License
 

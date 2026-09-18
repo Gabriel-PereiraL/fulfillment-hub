@@ -1,9 +1,9 @@
 # =============================================================================
 # FulfillmentHub — .gitignore
-# Regra: nada privado da IA, nenhum secret, nenhum artefato de build entra no repositório.
+# Rule: no private AI files, no secrets and no build artifacts enter the repository.
 # =============================================================================
 
-# --- Privado da IA / operacional (NUNCA publicar) -----------------------------
+# --- Private AI / operational files (NEVER publish) ---------------------------
 CLAUDE.md
 .claude/
 .ai/
@@ -17,7 +17,7 @@ scratch/
 scratchpad/
 notes-private/
 
-# --- Secrets e configuração local ---------------------------------------------
+# --- Secrets and local configuration -----------------------------------------
 .env
 .env.*
 !.env.example
@@ -36,7 +36,7 @@ terraform.tfvars
 *.auto.tfvars
 !example.tfvars
 
-# --- Dumps, dados e artefatos sensíveis ---------------------------------------
+# --- Dumps, data and sensitive artifacts -------------------------------------
 *.sql.gz
 *.dump
 *.bak
@@ -74,7 +74,7 @@ BenchmarkDotNet.Artifacts/
 *.DotSettings.User
 *~
 
-# --- Terraform (fase futura) -------------------------------------------------
+# --- Terraform (future phase) -------------------------------------------------
 .terraform/
 .terraform.lock.hcl
 *.tfstate
@@ -91,10 +91,10 @@ docker-compose.override.yml
 volume/
 volumes/
 
-# --- Node (caso a Admin UI precise de tooling) --------------------------------
+# --- Node (in case the Admin UI needs tooling) --------------------------------
 node_modules/
 
-# --- Sistema operacional -----------------------------------------------------
+# --- Operating system ---------------------------------------------------------
 Thumbs.db
 Desktop.ini
 .DS_Store

@@ -1,27 +1,27 @@
-# ADR-009 — OpenTelemetry com logging nativo; Aspire Dashboard local; CloudWatch/X-Ray na AWS
+# ADR-009 — OpenTelemetry with the built-in logging; Aspire Dashboard locally; CloudWatch/X-Ray on AWS
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-Observabilidade real (logs estruturados, métricas, traces, alertas) é requisito. Queremos portabilidade (OTel) e poucas dependências.
+## Context
+Real observability (structured logging, metrics, traces, alerts) is a requirement. We want portability (OTel) and few dependencies.
 
-## Opções
-- Logging: Serilog vs. **`Microsoft.Extensions.Logging` + `LoggerMessage` + exportador OTLP**.
-- Backend local: Grafana LGTM (Tempo/Prometheus/Loki), Jaeger + Prometheus, **Aspire Dashboard**.
-- AWS: CloudWatch/X-Ray via **ADOT collector**, ou Datadog/Grafana Cloud (custo/conta externa).
+## Options
+- Logging: Serilog vs. **`Microsoft.Extensions.Logging` + `LoggerMessage` + OTLP exporter**.
+- Local backend: Grafana LGTM (Tempo/Prometheus/Loki), Jaeger + Prometheus, **Aspire Dashboard**.
+- AWS: CloudWatch/X-Ray via the **ADOT collector**, or Datadog/Grafana Cloud (cost/external account).
 
-## Decisão
-Logging nativo com `LoggerMessage` (JSON no console + OTLP); traces/métricas com OpenTelemetry (ASP.NET Core, HttpClient, Npgsql,
-runtime, AWS SDK, `ActivitySource`/`Meter` próprios); Aspire Dashboard como backend local; ADOT sidecar → CloudWatch (logs/métricas/alarmes) e X-Ray (traces) na AWS.
+## Decision
+Built-in logging with `LoggerMessage` (JSON on the console + OTLP); traces/metrics with OpenTelemetry (ASP.NET Core, HttpClient, Npgsql,
+runtime, AWS SDK, our own `ActivitySource`/`Meter`); Aspire Dashboard as the local backend; ADOT sidecar → CloudWatch (logs/metrics/alarms) and X-Ray (traces) on AWS.
 
-## Motivo
-Sem adaptadores extras; correlação `trace_id` nos logs é automática; Aspire Dashboard é um container sem configuração; CloudWatch é o alvo pedido e barato o suficiente em dev.
+## Rationale
+No extra adapters; `trace_id` correlation in the logs is automatic; the Aspire Dashboard is a container with no configuration; CloudWatch is the requested target and cheap enough in dev.
 
 ## Trade-offs
-- Sem Serilog perde-se ecossistema de sinks/enrichers (não necessário aqui).
-- Aspire Dashboard não persiste dados (ok para dev); Grafana LGTM fica como alternativa documentada para dashboards persistentes.
-- X-Ray via OTel tem limitações de atributos; aceitável.
+- Without Serilog we lose the sinks/enrichers ecosystem (not needed here).
+- The Aspire Dashboard does not persist data (fine for dev); Grafana LGTM stays as the documented alternative for persistent dashboards.
+- X-Ray via OTel has attribute limitations; acceptable.
 
-## Consequências
-- Catálogo de métricas/spans/alertas em OBSERVABILITY.md; runbook executado na Fase 11.
-- `traceparent` propagado por outbox e SQS.
+## Consequences
+- Catalog of metrics/spans/alerts in OBSERVABILITY.md; runbook executed in Phase 11.
+- `traceparent` propagated through the outbox and SQS.

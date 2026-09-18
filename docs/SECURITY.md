@@ -1,131 +1,136 @@
 # SECURITY — FulfillmentHub
 
-Segurança é requisito de primeira classe. Este documento é o plano e, a partir da Fase 10, o **registro de evidências**
-(cada item aponta para código/teste). Nada aqui deve afirmar "implementado" antes de existir.
+Security is a first-class requirement. This document is the plan and, from Phase 10 on, the **evidence record**
+(each item points to code and tests). Nothing here claims "implemented" before it exists.
 
-## 1. Threat model simplificado
+## 1. Simplified threat model
 
-### Ativos
-Dados de clientes (nome, e-mail, telefone, endereço), pedidos e valores, credenciais de usuários (hash), segredos de
-integração (chaves HMAC, credenciais do "provider", JWT signing key, connection string), integridade do estado dos
-pedidos/pagamentos/entregas, disponibilidade da API e do worker.
+### Assets
+Customer data (name, e-mail, phone, address), orders and amounts, user credentials (hashes), integration secrets (HMAC
+keys, provider credentials, JWT signing key, connection string), integrity of order/payment/delivery state, availability
+of the API and the worker.
 
-### Superfície de ataque
-| Entrada | Quem chega | Risco principal |
+### Attack surface
+| Entry point | Who reaches it | Main risk |
 |---|---|---|
-| API pública (`/orders`, `/auth`) | clientes autenticados / anônimos (login) | credential stuffing, IDOR/broken access control, abuso (rate), injeção, overposting |
-| Webhooks (`/webhooks/*`) | "providers" (qualquer um que conheça a URL) | forjar eventos (pagamento "pago"), replay, flood |
-| Admin UI | operadores/admins | escalada de privilégio, CSRF (Blazor server), exposição de dados |
-| Banco/fila/segredos | infraestrutura | credenciais vazadas, acesso de rede indevido |
-| Cadeia de dependências | NuGet, imagens base | vulnerabilidades conhecidas |
-| Repositório | público no futuro | vazamento de secrets/arquivos privados no histórico |
+| Public API (`/orders`, `/auth`) | authenticated customers / anonymous (login) | credential stuffing, IDOR / broken access control, abuse (rate), injection, over-posting |
+| Webhooks (`/webhooks/*`) | "providers" (anyone who knows the URL) | forged events (a "paid" payment), replay, flood |
+| Admin UI | operators/admins | privilege escalation, CSRF (Blazor Server), data exposure |
+| Database / queue / secrets | infrastructure | leaked credentials, unintended network access |
+| Dependency chain | NuGet, base images | known vulnerabilities |
+| Repository | public | secrets or private files leaked into the history |
 
-### Atores
-Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider com acesso ao repositório/CI, dependência comprometida.
+### Actors
+A malicious authenticated user (customer), an anonymous attacker on the internet, an insider with repository/CI access, a compromised dependency.
 
-### Ameaças priorizadas (STRIDE resumido)
-| Ameaça | Categoria | Mitigação planejada | Evidência (fase) |
+### Prioritized threats (condensed STRIDE)
+| Threat | Category | Planned mitigation | Evidence (phase) |
 |---|---|---|---|
-| Webhook forjado confirma pagamento | Spoofing/Tampering | HMAC-SHA256 com chave por provider, comparação em tempo constante, tolerância de timestamp (5 min), dedup por event id, **e** `paid`/`refunded` confirmados com `GET` no provider antes de aplicar (D-P5 = sim, **implementado na Fase 5**, ver §2b) | 5 ✔ /7/10 |
-| Cliente lê/cancela pedido de outro | Elevation/Information disclosure | autorização por recurso no caso de uso (`order.CustomerId == principal.CustomerId`), 404 em vez de 403 para não revelar existência; testes T16 | **4 ✔** (`OrderQueries.Visible()`, `CancelOrderHandler`; `Customer_CannotSeeOrCancel_AnotherCustomersOrder`) |
-| Credential stuffing no login | Spoofing/DoS | rate limit por IP+conta, hash PBKDF2 (`PasswordHasher`), mensagens genéricas, lockout progressivo (P2) | **3 ✔** (rate limit por IP, PBKDF2, 401 idêntico + decoy; lockout por conta pendente) |
-| Token JWT roubado | Spoofing | expiração curta (15 min), `aud`/`iss` validados, HTTPS obrigatório fora de dev, sem token em logs/URLs; refresh token com rotação (P2) | **3 ✔** (exp 15 min, iss/aud/alg validados, sem token em logs; HTTPS/HSTS na Fase 10) |
-| Overposting (`status`, `total`, `customerId` no body) | Tampering | DTOs de request sem esses campos; valores derivados do servidor; testes | **4 ✔** (`PlaceOrderRequest`; campos extras ignorados, teste dedicado) |
-| SQL injection | Tampering | EF Core parametrizado; `FromSql` só interpolado; sem concatenação; analyzer EF | 2 |
-| Flood de webhooks/pedidos | DoS | rate limiting (`AddRateLimiter`), limite de corpo, timeouts, fila absorve picos | 10 |
-| SSRF | Tampering | o sistema **nunca** chama URLs fornecidas por usuários; URLs de providers são configuração validada (allowlist de hosts) | 10 |
-| Vazamento de PII em logs | Information disclosure | redação (mascarar e-mail/telefone), nunca logar corpo de webhook/payload de pedido completo, `LoggerMessage` com campos explícitos | 10 |
-| Secrets no repositório | Information disclosure | user-secrets/env local, Secrets Manager em nuvem, gitleaks em CI, checklist pré-publicação | 1/14/20 |
-| Dependência vulnerável | Supply chain | `dotnet list package --vulnerable`, dependency review, Trivy nas imagens, CPM com versões fixas | 10/14 |
-| Migrations destrutivas automáticas | Tampering/Availability | nunca `Migrate()` automático; script idempotente revisado; task one-off | 16 |
-| Acesso de rede ao banco/fila | Information disclosure | RDS em subnet privada, SG só do ECS, IAM task role least privilege, sem IP público no banco | 15 |
+| Forged webhook confirms a payment | Spoofing/Tampering | HMAC-SHA256 with a key per provider, constant-time comparison, timestamp window (5 min), dedup by event id, **and** `paid`/`refunded` confirmed with a `GET` on the provider before being applied (D-P5 = yes, **implemented in Phase 5**, see §2b) | 5 ✔ /7/10 |
+| A customer reads/cancels another customer's order | Elevation / Information disclosure | resource authorization inside the use case (`order.CustomerId == principal.CustomerId`), 404 instead of 403 so existence is not revealed; T16 tests | **4 ✔** (`OrderQueries.Visible()`, `CancelOrderHandler`; `Customer_CannotSeeOrCancel_AnotherCustomersOrder`) |
+| Credential stuffing on login | Spoofing/DoS | rate limit per IP + account, PBKDF2 hashing (`PasswordHasher`), generic messages, progressive lockout (P2) | **3 ✔** (rate limit per IP, PBKDF2, identical 401 + decoy; per-account lockout pending) |
+| Stolen JWT | Spoofing | short expiry (15 min), `aud`/`iss` validated, HTTPS mandatory outside dev, no tokens in logs/URLs; rotating refresh token (P2) | **3 ✔** (15 min expiry, iss/aud/alg validated, no tokens in logs; HTTPS/HSTS in Phase 10) |
+| Over-posting (`status`, `total`, `customerId` in the body) | Tampering | request DTOs without those fields; server-derived values; tests | **4 ✔** (`PlaceOrderRequest`; extra fields ignored, dedicated test) |
+| SQL injection | Tampering | parameterized EF Core; `FromSql` only interpolated; no concatenation; EF analyzer | 2 |
+| Webhook/order flood | DoS | rate limiting (`AddRateLimiter`), body size limit, timeouts, the queue absorbs peaks | 10 |
+| SSRF | Tampering | the system **never** calls user-supplied URLs; provider URLs are validated configuration (host allowlist) | 10 |
+| PII leaking into logs | Information disclosure | redaction (masked e-mail/phone), never log full webhook bodies or order payloads, `LoggerMessage` with explicit fields | 10 |
+| Secrets in the repository | Information disclosure | user-secrets/env locally, Secrets Manager in the cloud, gitleaks in CI, pre-publication checklist | 1/14/20 |
+| Vulnerable dependency | Supply chain | `dotnet list package --vulnerable`, dependency review, Trivy on images, CPM with pinned versions | 10/14 |
+| Automatic destructive migrations | Tampering/Availability | never an automatic `Migrate()`; reviewed idempotent script; one-off task | 16 |
+| Network access to the database/queue | Information disclosure | RDS in a private subnet, security group open only to ECS, least-privilege IAM task role, no public IP on the database | 15 |
 
-## 2. Autenticação e autorização — IMPLEMENTADO (Fase 3, 2026-09-18)
+## 2. Authentication and authorization — IMPLEMENTED (Phase 3, 2026-09-18)
 
-| Item | Implementação | Evidência |
+| Item | Implementation | Evidence |
 |---|---|---|
-| Usuários | tabela `users` própria (`User` agregado, roles fixas `Customer/Operator/Admin` em `text[]`); **não** usa o framework ASP.NET Identity, só a classe `PasswordHasher<User>` (ADR-008) | `src/FulfillmentHub.Domain/Identity/User.cs`, `src/FulfillmentHub.Infrastructure/Identity/IdentityPasswordHasher.cs` |
-| Hash de senha | `PasswordHasher<TUser>` v3: PBKDF2-HMAC-SHA512, salt por senha, 100k iterações, formato versionado; re-hash transparente no login quando o formato evoluir (`SuccessRehashNeeded`); hash malformado no banco = senha errada, nunca 500 | `IdentityPasswordHasherTests`, `LoginHandler` |
-| Emissão de token | `JsonWebTokenHandler` (stack atual do IdentityModel), HS256 com chave ≥ 32 bytes; claims **mínimas**: `sub` (user id), `role[]`, `customer_id` (só clientes), `jti`, `iat/nbf/exp/iss/aud`. Sem e-mail/nome no token | `JwtTokenService`, `JwtTokenServiceTests` |
-| Expiração | 15 min (`Jwt:AccessTokenLifetimeMinutes`, faixa 1–60), clock skew 30 s; sem refresh token na v1 (P2 BL-033) | `JwtOptions`, `AuthEndpointsTests.ExpiredToken_Returns401` |
-| Validação de token | `AddJwtBearer` com issuer, audience, assinatura (`ValidAlgorithms = [HS256]`), lifetime e `RequireExpirationTime`; `MapInboundClaims = false` (nomes curtos, sem mapeamento mágico) | `JwtBearerOptionsSetup`, testes de token adulterado/expirado/chave estranha |
-| Segredo | `Jwt:SigningKey` **nunca** em `appsettings` (valor vazio no arquivo); user-secrets em dev, Secrets Manager na AWS; `ValidateOnStart` recusa subir com chave ausente ou < 32 chars | `AuthorizationTests.Api_RefusesToStart_WhenJwtSigningKeyIsTooShort` |
-| Autorização | `FallbackPolicy = RequireAuthenticatedUser` (negar por padrão); policies `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly` (`RequireRole`); `AllowAnonymous` explícito só em `/health/*`, `/auth/login`, OpenAPI/Scalar (Development) | `AuthorizationPolicies`, `Program.cs`, `AuthorizationTests` (200/403/401) |
-| Rota inexistente | anônimo → **401** (a fallback policy vale mesmo sem endpoint: não revela rotas); autenticado → 404 ProblemDetails | `RequestPipelineTests` |
-| Login | `POST /api/v1/auth/login`: validação nativa do .NET 10 (`AddValidation`, DataAnnotations) → 400 ProblemDetails; falha → **401 idêntico** para e-mail inexistente, senha errada e usuário inativo (`auth.invalid_credentials`), com verificação de hash contra um *decoy* quando não há usuário (mesmo custo → sem oráculo de tempo) | `LoginHandler`, `AuthEndpointsTests.Login_WrongPassword_UnknownEmail_AndInactiveUser_AreIndistinguishable` |
-| Rate limiting | `AddRateLimiter`: janela fixa de 5 tentativas/min por IP de origem no login → 429 (`RejectionStatusCode`) | `ApiSecurityServiceCollectionExtensions`, `AuthEndpointsTests.Login_IsRateLimitedPerClient` |
-| Logs | eventos `3000/3001` com `UserId` (sucesso) ou motivo interno (`UnknownUser/WrongPassword/InactiveUser/MalformedEmail`) — **sem e-mail, senha ou token**; EF sem `EnableSensitiveDataLogging` (parâmetros não são logados) | verificação manual do log do host em 2026-09-18 |
-| Principal na aplicação | `ICurrentUser` (Application) materializado das claims por request (`HttpContextCurrentUser`); casos de uso fazem autorização por recurso a partir dele (Fase 4) | `GET /api/v1/me` |
-| Admin | `GET /api/v1/users/{id}` (AdminOnly) expõe e-mail/roles/status de um usuário — único endpoint administrativo desta fase | `UsersEndpoints` |
-| Seed | `dotnet run --project src/FulfillmentHub.Api -- seed`: só em Development, senhas vindas de user-secrets (`Seed:*Password`, ≥ 12 chars), dados fictícios, idempotente | `DevelopmentSeeder` |
+| Users | own `users` table (`User` aggregate, fixed roles `Customer/Operator/Admin` in `text[]`); the ASP.NET Identity framework is **not** used, only the `PasswordHasher<User>` class (ADR-008) | `src/FulfillmentHub.Domain/Identity/User.cs`, `src/FulfillmentHub.Infrastructure/Identity/IdentityPasswordHasher.cs` |
+| Password hashing | `PasswordHasher<TUser>` v3: PBKDF2-HMAC-SHA512, per-password salt, 100k iterations, versioned format; transparent re-hash at login when the format evolves (`SuccessRehashNeeded`); a malformed hash in the database means "wrong password", never a 500 | `IdentityPasswordHasherTests`, `LoginHandler` |
+| Token issuance | `JsonWebTokenHandler` (the current IdentityModel stack), HS256 with a key ≥ 32 bytes; **minimal** claims: `sub` (user id), `role[]`, `customer_id` (customers only), `jti`, `iat/nbf/exp/iss/aud`. No e-mail or name in the token | `JwtTokenService`, `JwtTokenServiceTests` |
+| Expiry | 15 min (`Jwt:AccessTokenLifetimeMinutes`, range 1–60), 30 s clock skew; no refresh token in v1 (P2, BL-033) | `JwtOptions`, `AuthEndpointsTests.ExpiredToken_Returns401` |
+| Token validation | `AddJwtBearer` with issuer, audience, signature (`ValidAlgorithms = [HS256]`), lifetime and `RequireExpirationTime`; `MapInboundClaims = false` (short names, no magic mapping) | `JwtBearerOptionsSetup`, tampered/expired/foreign-key token tests |
+| Secret | `Jwt:SigningKey` **never** in `appsettings` (empty value in the file); user-secrets in dev, Secrets Manager on AWS; `ValidateOnStart` refuses to start with a missing key or one shorter than 32 chars | `AuthorizationTests.Api_RefusesToStart_WhenJwtSigningKeyIsTooShort` |
+| Authorization | `FallbackPolicy = RequireAuthenticatedUser` (deny by default); policies `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly` (`RequireRole`); explicit `AllowAnonymous` only on `/health/*`, `/auth/login`, OpenAPI/Scalar (Development) | `AuthorizationPolicies`, `Program.cs`, `AuthorizationTests` (200/403/401) |
+| Unknown route | anonymous → **401** (the fallback policy applies even without an endpoint: routes are not revealed); authenticated → 404 ProblemDetails | `RequestPipelineTests` |
+| Login | `POST /api/v1/auth/login`: native .NET 10 validation (`AddValidation`, DataAnnotations) → 400 ProblemDetails; failure → an **identical 401** for unknown e-mail, wrong password and inactive user (`auth.invalid_credentials`), with a hash check against a *decoy* when there is no user (same cost → no timing oracle) | `LoginHandler`, `AuthEndpointsTests.Login_WrongPassword_UnknownEmail_AndInactiveUser_AreIndistinguishable` |
+| Rate limiting | `AddRateLimiter`: fixed window of 5 attempts/min per source IP on login → 429 (`RejectionStatusCode`) | `ApiSecurityServiceCollectionExtensions`, `AuthEndpointsTests.Login_IsRateLimitedPerClient` |
+| Logs | events `3000/3001` with `UserId` (success) or an internal reason (`UnknownUser/WrongPassword/InactiveUser/MalformedEmail`) — **no e-mail, password or token**; EF without `EnableSensitiveDataLogging` (parameters are not logged) | manual host log review on 2026-09-18 |
+| Principal in the application | `ICurrentUser` (Application) built from the claims per request (`HttpContextCurrentUser`); use cases do resource authorization from it (Phase 4) | `GET /api/v1/me` |
+| Admin | `GET /api/v1/users/{id}` (AdminOnly) exposes a user's e-mail/roles/status — the only administrative endpoint of that phase | `UsersEndpoints` |
+| Seed | `dotnet run --project src/FulfillmentHub.Api -- seed`: Development only, passwords from user-secrets (`Seed:*Password`, ≥ 12 chars), fictional data, idempotent | `DevelopmentSeeder` |
 
-### Limitações conhecidas (registradas)
-- Sem refresh/revogação de token: um token vazado vale até 15 min (BL-033, P2).
-- Sem lockout progressivo por conta (só rate limit por IP): atacante distribuído pode tentar 5/min por IP (P2).
-- Rate limit por `RemoteIpAddress`: atrás do ALB (Fase 16) exige `ForwardedHeaders` configurado com proxies conhecidos, senão todos compartilham o IP do balanceador (BL-106).
-- HS256 compartilha a mesma chave entre emissor e validador (Api/Admin); RS256 só se surgir mais de um emissor (ADR-008).
-- Sem MFA, sem OAuth/OIDC para terceiros (fora de escopo, ADR-008).
+### Known limitations (on record)
+- No token refresh/revocation: a leaked token is valid for up to 15 min (BL-033, P2).
+- No progressive per-account lockout (only per-IP rate limiting): a distributed attacker can try 5/min per IP (P2).
+- Rate limiting by `RemoteIpAddress`: behind the ALB (Phase 16) it requires `ForwardedHeaders` configured with known proxies, otherwise everyone shares the load balancer's IP (BL-106).
+- HS256 shares the same key between issuer and validator (Api/Admin); RS256 only if more than one issuer appears (ADR-008).
+- No MFA, no OAuth/OIDC for third parties (out of scope, ADR-008).
 
-### Desenho original (mantido para referência)
-- **Usuários próprios** (tabela `users`), senha com `PasswordHasher<User>` (PBKDF2-HMAC-SHA512, iterações padrão do ASP.NET Core Identity — só a classe, não o framework). Política: ≥ 12 caracteres (sem regras bobas de composição).
-- **JWT bearer** emitido por `POST /auth/login`: HS256 com chave ≥ 256 bits vinda de secrets; claims `sub`, `role[]`, `customer_id` (quando aplicável), `jti`; `exp` 15 min; `iss`/`aud` fixos e validados; clock skew 30 s.
-- **Autorização**: `FallbackPolicy` = usuário autenticado (negar por padrão). Policies: `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`. Autorização **por recurso** dentro do caso de uso (o principal é passado como `ICurrentUser`), com testes.
-- Admin UI (Blazor Server): cookie auth com `SameSite=Strict`, antiforgery nativo, mesmas policies (Fase 17).
+### Original design (kept for reference)
+- **Own users** (`users` table), passwords with `PasswordHasher<User>` (PBKDF2-HMAC-SHA512, ASP.NET Core Identity's default iterations — the class only, not the framework). Policy: ≥ 12 characters (no silly composition rules).
+- **JWT bearer** issued by `POST /auth/login`: HS256 with a ≥ 256-bit key from secrets; claims `sub`, `role[]`, `customer_id` (when applicable), `jti`; `exp` 15 min; fixed, validated `iss`/`aud`; 30 s clock skew.
+- **Authorization**: `FallbackPolicy` = authenticated user (deny by default). Policies: `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`. **Resource** authorization inside the use case (the principal is passed as `ICurrentUser`), with tests.
+- Admin UI (Blazor Server): cookie auth with `SameSite=Strict`, native antiforgery, the same policies (Phase 17).
 
-## 2b. Webhooks de pagamento e entrega — IMPLEMENTADO (Fases 5 e 7, 2026-09-18)
+## 2b. Payment and delivery webhooks — IMPLEMENTED (Phases 5 and 7, 2026-09-18)
 
-| Item | Implementação | Evidência |
+| Item | Implementation | Evidence |
 |---|---|---|
-| Autenticidade | `X-Signature` = HMAC-SHA256 hex do **corpo bruto** com `Providers:Payment:WebhookSigningKey` (≥ 16 chars, fora do código, validada no start); comparação em tempo constante (`CryptographicOperations.FixedTimeEquals`); hex malformado ou ausente = inválida | `WebhookSignatureVerifier`, `Webhook_WithBadSignature_IsRejected_AndNothingIsPersisted` (chave errada / sem header / corpo alterado → 401) |
-| Replay | `X-Timestamp` (unix s) com tolerância de 5 min (`WebhookTimestampToleranceSeconds`); depois, dedup por `UNIQUE(provider, provider_event_id)` em `webhook_events` — a 2ª entrega recebe 200 sem efeito | mesmo teste (timestamp −10 min → 401); `DuplicateWebhook_IsAcknowledged_ButAppliedOnce` |
-| Chave vazada não confirma pagamento (D-P5) | `paid`/`refunded` só são aplicados após `GET` no provider; o status do corpo do webhook é apenas um gatilho | `Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted` (webhook "paid" válido para pagamento recusado → pedido continua cancelado) |
-| Flood / corpo grande | rate limit próprio `webhooks` (120/min por IP, 429); `Content-Length`/leitura limitados a 64 KB (413); corpo lido uma vez, em memória, com `CancellationToken` | `ApiSecurityServiceCollectionExtensions`, `PaymentWebhooksEndpoints` |
-| Malformado | JSON inválido ou sem `data` com assinatura válida → 400 ProblemDetails, nada persistido | `Webhook_WithValidSignature_ButMalformedPayload_Returns400` |
-| Logs | eventos 5200–5202: provider, event id, motivo da rejeição — **nunca** o corpo, a assinatura ou a chave; payload fica só em `webhook_events.payload` (jsonb) | verificação manual do log do host em 2026-09-18 (0 ocorrências de chave/token) |
-| Segredos | `Providers:Payment:ApiKey` e `WebhookSigningKey` vazios em `appsettings`; user-secrets em dev (Api e Worker); o simulator traz valores **dev-only** só em `appsettings.Development.json` | `PaymentProviderOptions` (`ValidateOnStart`), `.gitignore` |
+| Authenticity | `X-Signature` = HMAC-SHA256 hex of the **raw body** with `Providers:Payment:WebhookSigningKey` (≥ 16 chars, outside the code, validated at startup); constant-time comparison (`CryptographicOperations.FixedTimeEquals`); malformed or missing hex = invalid | `WebhookSignatureVerifier`, `Webhook_WithBadSignature_IsRejected_AndNothingIsPersisted` (wrong key / no header / tampered body → 401) |
+| Replay | `X-Timestamp` (unix s) with a 5 min window (`WebhookTimestampToleranceSeconds`); then dedup by `UNIQUE(provider, provider_event_id)` in `webhook_events` — the second delivery gets a 200 without effect | same test (timestamp −10 min → 401); `DuplicateWebhook_IsAcknowledged_ButAppliedOnce` |
+| A leaked key does not confirm a payment (D-P5) | `paid`/`refunded` are only applied after a `GET` on the provider; the status in the webhook body is only a trigger | `Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted` (a valid "paid" webhook for a declined payment → the order stays cancelled) |
+| Flood / large body | own `webhooks` rate limit policy (`RateLimiting:WebhooksPerMinute` per IP, 429); `Content-Length`/read limited to 64 KB (413); the body is read once, in memory, with a `CancellationToken` | `ApiSecurityServiceCollectionExtensions`, `WebhookReceiver` |
+| Malformed | invalid JSON or no `data` with a valid signature → 400 ProblemDetails, nothing persisted | `Webhook_WithValidSignature_ButMalformedPayload_Returns400` |
+| Logs | events 5200–5203: provider, event id, rejection reason — **never** the body, the signature or the key; the payload lives only in `webhook_events.payload` (jsonb) | manual host log review on 2026-09-18 (0 occurrences of keys/tokens) |
+| Secrets | `Providers:Payment:ApiKey` and `WebhookSigningKey` empty in `appsettings`; user-secrets in dev (Api and Worker); the simulator ships **dev-only** values only in `appsettings.Development.json` | `PaymentProviderOptions` (`ValidateOnStart`), `.gitignore` |
 
-Fase 7: o mesmo pipeline (`WebhookReceiver`) recebe `event.delivery_status` em `POST /api/v1/webhooks/deliveries` com **chave e header próprios** (`Providers:Delivery:WebhookSigningKey`, `X-Uber-Signature`): a chave do provider de pagamento não assina eventos de entrega (`Webhook_WithBadSignature_OrWrongHeader_IsRejected`). Eventos de entrega **não** são confirmados com `GET` (D-59): um evento forjado com chave vazada pode, no máximo, avançar o status da entrega/pedido (sem dinheiro envolvido) e nunca regredi-lo; a reconciliação com o provider corrige divergências.
+Phase 7: the same pipeline (`WebhookReceiver`) receives `event.delivery_status` on `POST /api/v1/webhooks/deliveries` with
+**its own key and header** (`Providers:Delivery:WebhookSigningKey`, `X-Uber-Signature`): the payment provider's key does
+not sign delivery events (`Webhook_WithBadSignature_OrWrongHeader_IsRejected`). Delivery events are **not** confirmed with
+a `GET` (D-59): an event forged with a leaked key can at most advance the delivery/order status (no money involved) and
+never regress it; reconciliation with the provider corrects divergences.
 
-Limitações registradas: uma única chave HMAC por provider, sem rotação (P2); tolerância de timestamp depende de relógio sincronizado (NTP no host); a varredura de eventos `Received/Failed` para reprocessamento fica para a Fase 8 — hoje a reconciliação cobre o caso.
+Limitations on record: a single HMAC key per provider, no rotation (P2); the timestamp window depends on a synchronized
+clock (NTP on the host); events marked `Failed` are corrected by reconciliation rather than re-processed by a sweep.
 
-## 3. Segredos e configuração
+## 3. Secrets and configuration
 
-| Ambiente | Mecanismo | Regras |
+| Environment | Mechanism | Rules |
 |---|---|---|
-| Local | `dotnet user-secrets` (Api, Worker, Admin) e/ou `.env` (compose) ignorado; `.env.example` sem valores reais | `appsettings*.json` nunca contêm secrets; chaves do simulator são valores de desenvolvimento óbvios (`dev-only-...`) |
-| Testes | valores gerados por teste / Testcontainers | |
-| AWS | **Secrets Manager** (connection string, JWT key, HMAC keys) injetado na task definition via `secrets` (não `environment`); Parameter Store para config não sensível | task role com `secretsmanager:GetSecretValue` restrito ao ARN; rotação manual documentada |
+| Local | `dotnet user-secrets` (Api, Worker, Admin) and/or an ignored `.env` (compose); `.env.example` without real values | `appsettings*.json` never contain secrets; the simulator keys are obvious development values (`dev-only-...`) |
+| Tests | values generated per test / Testcontainers | |
+| AWS | **Secrets Manager** (connection string, JWT key, HMAC keys) injected into the task definition through `secrets` (not `environment`); Parameter Store for non-sensitive config | task role with `secretsmanager:GetSecretValue` restricted to the ARN; manual rotation documented |
 
-Proibido em qualquer lugar: secrets em código, commits, logs, URLs, mensagens de erro, OpenAPI.
+Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAPI.
 
-## 4. OWASP Top 10 (2021) — checklist (preencher com evidências na Fase 10)
+## 4. OWASP Top 10 (2021) — checklist (to be filled with evidence in Phase 10)
 
-| # | Categoria | Aplicação no projeto | Status |
+| # | Category | Application in this project | Status |
 |---|---|---|---|
-| A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | **implementado (Fases 3–4)**: `FallbackPolicy` ✔, policies por papel ✔, autorização por recurso em `OrderQueries`/`CancelOrderHandler` (pedido alheio → 404, sem liberar estoque) com `OrderAccessAndCancelTests` ✔ |
-| A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | **parcial (Fase 3)**: PBKDF2-HMAC-SHA512 ✔, chave JWT ≥ 32 bytes validada no start ✔, `ValidAlgorithms=[HS256]` ✔; TLS pendente; HMAC-SHA256 de webhooks com comparação em tempo constante ✔ (Fase 5) |
-| A03 | Injection | EF Core parametrizado, validação de entrada, sem SQL dinâmico, sem `Process.Start` | planejado |
-| A04 | Insecure Design | threat model, idempotência, limites (itens por pedido, tamanho de corpo), reconciliação | **parcial (Fase 4)**: idempotência real com chave por usuário ✔ (ADR-010), limites 1–50 itens / 1–99 unidades ✔, overposting: DTOs sem `status/total/customerId` e teste `PlaceOrder_IgnoresServerControlledFields` ✔; limite de corpo e reconciliação pendentes |
-| A05 | Security Misconfiguration | headers (`X-Content-Type-Options`, `Referrer-Policy`, CSP na Admin), CORS explícito, erros sem stack fora de dev, OpenAPI só em dev, containers não-root | planejado |
-| A06 | Vulnerable Components | CPM, `--vulnerable`, dependency review, Trivy, imagens base atualizadas | planejado |
-| A07 | Identification & Authentication Failures | rate limit de login, mensagens genéricas, exp curta, sem enumeração de usuários | **implementado (Fase 3)**: 5/min por IP ✔, 401 idêntico + decoy hash ✔, exp 15 min ✔, testes `AuthEndpointsTests` |
-| A08 | Software & Data Integrity Failures | assinatura de webhooks, outbox (integridade de eventos), lockfile de pacotes, CI com permissões mínimas | **parcial (Fase 5)**: webhooks assinados + verificados no provider ✔ (§2b); outbox Fase 8; lockfile/CI Fase 14 |
-| A09 | Security Logging & Monitoring | logs estruturados de auth (sucesso/falha), webhooks rejeitados, alertas de 401/403 anômalos e DLQ, sem PII | **parcial (Fases 3/5)**: eventos 3000/3001 de login ✔; 5200 webhook rejeitado + métrica `fh.webhooks.rejected{reason}` ✔; alertas na Fase 11/16 |
-| A10 | SSRF | nenhuma URL de usuário é chamada; hosts de providers em allowlist de configuração | planejado |
+| A01 | Broken Access Control | deny by default, policies, resource authorization, T16 tests, 404 vs 403 | **implemented (Phases 3–4)**: `FallbackPolicy` ✔, role policies ✔, resource authorization in `OrderQueries`/`CancelOrderHandler` (another customer's order → 404, no stock released) with `OrderAccessAndCancelTests` ✔ |
+| A02 | Cryptographic Failures | PBKDF2 for passwords, HMAC-SHA256 webhooks, TLS outside dev, JWT key ≥ 256 bits, no "none" algorithms | **partial (Phase 3)**: PBKDF2-HMAC-SHA512 ✔, JWT key ≥ 32 bytes validated at startup ✔, `ValidAlgorithms=[HS256]` ✔; TLS pending; HMAC-SHA256 webhooks with constant-time comparison ✔ (Phase 5) |
+| A03 | Injection | parameterized EF Core, input validation, no dynamic SQL, no `Process.Start` | planned |
+| A04 | Insecure Design | threat model, idempotency, limits (items per order, body size), reconciliation | **partial (Phase 4)**: real idempotency keyed per user ✔ (ADR-010), limits of 1–50 items / 1–99 units ✔, over-posting: DTOs without `status/total/customerId` and the `PlaceOrder_IgnoresServerControlledFields` test ✔; body limit and reconciliation pending |
+| A05 | Security Misconfiguration | headers (`X-Content-Type-Options`, `Referrer-Policy`, CSP on the Admin), explicit CORS, no stack traces outside dev, OpenAPI only in dev, non-root containers | planned |
+| A06 | Vulnerable Components | CPM, `--vulnerable`, dependency review, Trivy, updated base images | planned |
+| A07 | Identification & Authentication Failures | login rate limit, generic messages, short expiry, no user enumeration | **implemented (Phase 3)**: 5/min per IP ✔, identical 401 + decoy hash ✔, 15 min expiry ✔, `AuthEndpointsTests` |
+| A08 | Software & Data Integrity Failures | webhook signatures, outbox (event integrity), package lockfile, CI with minimal permissions | **partial (Phase 5)**: webhooks signed + verified with the provider ✔ (§2b); outbox Phase 8; lockfile/CI Phase 14 |
+| A09 | Security Logging & Monitoring | structured auth logs (success/failure), rejected webhooks, alerts on anomalous 401/403 and DLQ, no PII | **partial (Phases 3/5)**: login events 3000/3001 ✔; 5200 rejected webhook + metric `fh.webhooks.rejected{reason}` ✔; alerts in Phases 11/16 |
+| A10 | SSRF | no user-supplied URL is ever called; provider hosts in a configuration allowlist | planned |
 
-## 5. Dados pessoais (LGPD — princípio de minimização)
-- Coletar só o necessário (nome, e-mail, telefone, endereço de entrega). Telefone/e-mail mascarados em logs e na Admin (exibição completa só para Admin com motivo).
-- Dados enviados ao "provider" limitados ao necessário para a entrega (simulado).
-- Retenção: `webhook_events` e `outbox_messages` processados podem ser expurgados após 30 dias (job P2). `idempotency_records` expiram em 24 h.
-- Sem dados reais: seeds usam dados fictícios.
+## 5. Personal data (Brazilian LGPD — data minimization)
+- Collect only what is needed (name, e-mail, phone, delivery address). Phone/e-mail masked in logs and in the Admin (full display only for Admin, with a reason).
+- Data sent to the "provider" limited to what the delivery needs (simulated).
+- Retention: processed `webhook_events` and `outbox_messages` may be purged after 30 days (P2 job). `idempotency_records` expire after 24 h.
+- No real data: seeds use fictional data.
 
-## 6. SAST / dependency scanning (Fase 10/14)
-- Local: analyzers de segurança do .NET (`CA3xxx`, `CA5xxx` em `AnalysisLevel latest-recommended`), `dotnet list package --vulnerable --include-transitive`.
-- CI (após autorização de GitHub): CodeQL (C#), GitHub dependency review, gitleaks (secrets), Trivy (imagens), `dotnet format --verify-no-changes`.
+## 6. SAST / dependency scanning (Phases 10/14)
+- Local: the .NET security analyzers (`CA3xxx`, `CA5xxx` under `AnalysisLevel latest-recommended`), `dotnet list package --vulnerable --include-transitive`.
+- CI (once GitHub Actions exists): CodeQL (C#), GitHub dependency review, gitleaks (secrets), Trivy (images), `dotnet format --verify-no-changes`.
 
-## 7. Checklist pré-publicação (usar na Fase 20 e antes de qualquer push)
-Ver `DEPLOYMENT.md` §"Checklist anti-vazamento".
+## 7. Pre-publication checklist (used in Phase 20 and before any push)
+See `DEPLOYMENT.md`, section "Leak-prevention checklist".
 
-## 8. Decisões pendentes de segurança
-- ~~**D-P5**~~ — **resolvida (Fase 5): sim** para `paid`/`refunded` (implementado em `ApplyPaymentWebhookHandler`); eventos de entrega (Fase 7) não serão reconciliados por webhook.
-- Lockout progressivo de login (P2). Refresh token com rotação (P2). Chave HMAC por webhook com rotação (P2).
+## 8. Pending security decisions
+- ~~**D-P5**~~ — **resolved (Phase 5): yes** for `paid`/`refunded` (implemented in `ApplyPaymentWebhookHandler`); delivery events (Phase 7) are not reconciled per webhook.
+- Progressive login lockout (P2). Rotating refresh token (P2). Per-webhook HMAC key with rotation (P2).

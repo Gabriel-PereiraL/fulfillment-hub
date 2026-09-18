@@ -1,109 +1,110 @@
 # OBSERVABILITY — FulfillmentHub
 
-Objetivo: conseguir responder "o que aconteceu com o pedido X?" e "por que a API está lenta?" sem acessar o banco,
-usando **logs estruturados, métricas e traces correlacionados** (OpenTelemetry). Local desde a Fase 1; AWS na Fase 16.
+Goal: be able to answer "what happened to order X?" and "why is the API slow?" without opening the database, using
+**structured logging, metrics and correlated distributed tracing** (OpenTelemetry). Local since Phase 1; AWS in Phase 16.
 
 ## 1. Stack (ADR-009)
 
-| Sinal | Biblioteca | Local | AWS |
+| Signal | Library | Local | AWS |
 |---|---|---|---|
-| Logs | `Microsoft.Extensions.Logging` + `LoggerMessage` (source generator) + `OpenTelemetry.Exporter.OpenTelemetryProtocol` (logs) + console JSON | Aspire Dashboard (OTLP) + stdout | CloudWatch Logs (via ADOT collector sidecar ou awslogs driver com JSON) |
-| Traces | `OpenTelemetry.Instrumentation.AspNetCore`, `.Http`, `Npgsql` (nativo via `Npgsql.OpenTelemetry`), `AWSSDK` instrumentation, `ActivitySource` próprio | Aspire Dashboard | AWS X-Ray via ADOT |
-| Métricas | `OpenTelemetry.Instrumentation.Runtime`, ASP.NET Core/HttpClient metrics nativas (.NET 8+ `Meter`), `Meter` próprio, Polly metering | Aspire Dashboard | CloudWatch Metrics (EMF via ADOT) + alarms |
-| Health | `Microsoft.Extensions.Diagnostics.HealthChecks` (+ Npgsql, SQS custom) | `/health/live`, `/health/ready` | ALB target group health + ECS |
+| Logs | `Microsoft.Extensions.Logging` + `LoggerMessage` (source generator) + `OpenTelemetry.Exporter.OpenTelemetryProtocol` (logs) + JSON console | Aspire Dashboard (OTLP) + stdout | CloudWatch Logs (ADOT collector sidecar or the awslogs driver with JSON) |
+| Traces | `OpenTelemetry.Instrumentation.AspNetCore`, `.Http`, `Npgsql` (native, via `Npgsql.OpenTelemetry`), `AWSSDK` instrumentation, our own `ActivitySource` | Aspire Dashboard | AWS X-Ray via ADOT |
+| Metrics | `OpenTelemetry.Instrumentation.Runtime`, native ASP.NET Core/HttpClient metrics (.NET 8+ `Meter`), our own `Meter`, Polly metering | Aspire Dashboard | CloudWatch Metrics (EMF via ADOT) + alarms |
+| Health | `Microsoft.Extensions.Diagnostics.HealthChecks` (+ Npgsql, custom SQS) | `/health/live`, `/health/ready` | ALB target group health + ECS |
 
-Por que não Serilog: o logging nativo com `LoggerMessage` já é estruturado, performático e integra com OTel sem adaptadores;
-menos uma dependência para justificar. Por que Aspire Dashboard local: um container, zero configuração, mostra os três sinais.
-Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki) se precisar de dashboards persistentes na Fase 11.
+Why not Serilog: the built-in logging with `LoggerMessage` is already structured, fast and integrates with OTel without
+adapters; one less dependency to justify. Why the Aspire Dashboard locally: one container, zero configuration, shows all
+three signals. Alternative on record: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki) if persistent dashboards
+are needed in Phase 11.
 
-## 2. Correlação
+## 2. Correlation
 
-- `X-Correlation-Id`: aceito do cliente (validado: ≤ 64 chars, alfanumérico/`-`) ou gerado; devolvido na resposta; incluído como scope de log e como atributo do span raiz.
-- `trace_id`/`span_id` (W3C `traceparent`) entram automaticamente nos logs (OTel logs) — o correlation id é conveniência para humanos e clientes; o trace id é a chave técnica.
-- Propagação assíncrona: `traceparent` é salvo em `outbox_messages.trace_parent` e como message attribute no SQS; o consumidor cria o span com `ActivityContext.Parse` (link ou parent — decisão: **parent** para fluxo contínuo de um pedido, link quando o lote mistura pedidos).
-- `order_id`, `payment_id`, `delivery_id`, `provider_event_id` como atributos de span e campos de log (nunca dados pessoais).
+- `X-Correlation-Id`: accepted from the client (validated: ≤ 64 chars, alphanumeric/`-`) or generated; returned in the response; included as a log scope and as an attribute of the root span.
+- `trace_id`/`span_id` (W3C `traceparent`) enter the logs automatically (OTel logs) — the correlation id is a convenience for humans and clients; the trace id is the technical key.
+- Asynchronous propagation: `traceparent` is stored in `outbox_messages.trace_parent` and as an SQS message attribute; the consumer creates the span with `ActivityContext.Parse` (link or parent — decision: **parent** for the continuous flow of one order, link when a batch mixes orders).
+- `order_id`, `payment_id`, `delivery_id`, `provider_event_id` as span attributes and log fields (never personal data).
 
 ## 3. Logs
 
-- JSON no console (container-friendly), níveis: `Information` para transições de estado e chamadas externas (resumo), `Warning` para retries/webhooks rejeitados/duplicados, `Error` para falhas que vão à outbox `Failed`/DLQ ou exceções não tratadas.
-- `LoggerMessage` com `EventId` fixo por mensagem (catálogo em `Infrastructure/Telemetry/LogEvents.cs`).
-- Proibido: corpo completo de request/webhook, tokens, chaves, e-mail/telefone sem máscara, stack trace em `Information`.
-- Exemplo de campos: `{ "EventId": 2101, "Message": "Order {OrderId} transitioned {From}->{To}", "OrderId": "...", "From": "Paid", "To": "DeliveryRequested", "CorrelationId": "...", "TraceId": "..." }`.
+- JSON on the console (container-friendly); levels: `Information` for state transitions and external calls (summary), `Warning` for retries/rejected or duplicate webhooks, `Error` for failures that end in the outbox `Failed` state/DLQ or unhandled exceptions.
+- `LoggerMessage` with a fixed `EventId` per message (catalog in `Infrastructure/Telemetry/LogEvents.cs`).
+- Forbidden: full request/webhook bodies, tokens, keys, unmasked e-mail/phone, stack traces at `Information`.
+- Example fields: `{ "EventId": 2101, "Message": "Order {OrderId} transitioned {From}->{To}", "OrderId": "...", "From": "Paid", "To": "DeliveryRequested", "CorrelationId": "...", "TraceId": "..." }`.
 
-## 4. Métricas (nomes seguindo convenções OTel semânticas onde existem)
+## 4. Metrics (names follow the OTel semantic conventions where they exist)
 
-| Métrica | Tipo | Dimensões | Fonte | Fase |
+| Metric | Type | Dimensions | Source | Phase |
 |---|---|---|---|---|
-| `http.server.request.duration` | histograma | route, status | nativa ASP.NET Core | 1 |
-| `http.client.request.duration` | histograma | `server.address`, status | nativa HttpClient | 1 |
+| `http.server.request.duration` | histogram | route, status | native ASP.NET Core | 1 |
+| `http.client.request.duration` | histogram | `server.address`, status | native HttpClient | 1 |
 | `fh.orders.placed` / `fh.orders.cancelled` | counter | `reason` (cancel) | Application (`OrdersMetrics`) | 4 ✔ |
-| `fh.order.time_to_final` | histograma (s) | `final_status` | Worker | 11 (BL-123) |
-| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 — **pendente** (só log `4100` por enquanto; adicionar contador na Fase 11) |
+| `fh.order.time_to_final` | histogram (s) | `final_status` | Worker | 11 (BL-123) |
+| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 — **pending** (only log `4100` for now; counter to be added in Phase 11) |
 | `fh.stock.reservation_conflicts` | counter | `kind` (`insufficient_stock`, `concurrent_update`) | Application (`OrdersMetrics`) | 4 ✔ |
-| `fh.provider.request.duration` | histograma | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5 — coberto por `http.client.request.duration` (instrumentação OTel de `HttpClient`, tag `http.request.resend_count` = tentativa) + span `Provider <op>`; métrica própria só se a padrão não bastar (BL-246) |
-| `fh.provider.retries` | counter | `provider`, `operation`, `reason` | Polly telemetry | 11 (BL-246; Polly emite `resilience.polly.strategy.events` já hoje) |
+| `fh.provider.request.duration` | histogram | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5 — covered by `http.client.request.duration` (OTel `HttpClient` instrumentation, tag `http.request.resend_count` = attempt) + the `Provider <op>` span; a dedicated metric only if the standard one is not enough (BL-246) |
+| `fh.provider.retries` | counter | `provider`, `operation`, `reason` | Polly telemetry | 11 (BL-246; Polly already emits `resilience.polly.strategy.events` today) |
 | `fh.provider.circuit_state` | gauge (0/1/2) | `provider` | Polly telemetry | 11 (BL-246) |
 | `fh.webhooks.received` / `.rejected` / `.duplicates` / `.out_of_order` | counter | `provider`, `event_type` (received), `reason` (rejected), `disposition` (out_of_order: `OutOfOrder`/`Stale`) | Api/Application (`WebhooksMetrics`) | 5/7 ✔ |
 | `fh.deliveries.events` | counter | `disposition` (`Applied`, `Duplicate`, `OutOfOrder`, `Stale`, `Conflict`) | Application (`DeliveryStatusApplier`) | 7 ✔ |
 | `fh.payments.settled` | counter | `status` (`paid`, `failed`, `paid_after_cancellation`) | Application (`PaymentStatusApplier`) | 5 ✔ |
 | `fh.deliveries.quotes` / `fh.deliveries.requested` | counter | `outcome` (`quoted`, `fallback_fee`, `rejected`, `requoted` / `created`, `adopted`, `adopted_duplicate`, `deferred`, `rejected`, `quote_expired_twice`) | Application (`DeliveriesMetrics`) | 6 ✔ |
-| `fh.webhooks.processing.duration` | histograma | `provider` | Worker | 7 |
-| `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | `OutboxMetrics` (atualizado a cada passada do publisher) | 8 ✔ |
+| `fh.webhooks.processing.duration` | histogram | `provider` | Worker | 7 |
+| `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | `OutboxMetrics` (refreshed on every publisher pass) | 8 ✔ |
 | `fh.outbox.published` | counter | `outcome` (`processed`, `retried`, `failed`), `type` | `OutboxProcessor` | 8 ✔ |
-| `fh.outbox.lag` | histograma (s: `now - occurred_at` ao publicar) | `type` | `OutboxProcessor` | 8 ✔ |
-| `fh.outbox.publish.duration` | histograma (ms por handler) | `type` | `OutboxProcessor` | 8 ✔ |
+| `fh.outbox.lag` | histogram (s: `now - occurred_at` at publish time) | `type` | `OutboxProcessor` | 8 ✔ |
+| `fh.outbox.publish.duration` | histogram (ms per handler) | `type` | `OutboxProcessor` | 8 ✔ |
 | `fh.queue.messages.processed` / `.failed` | counter | `queue`, `consumer`, `reason` (failed) | Worker (`SqsConsumer`) | 9 ✔ |
-| `fh.queue.message.age` | histograma (s: `SentTimestamp` → receive) | `queue` | Worker (`SqsConsumer`) | 9 ✔ |
-| `fh.queue.dlq.depth` | gauge | `queue` | Worker (`GetQueueAttributes` a cada 30 s) + CloudWatch nativo | 9 ✔ /16 |
-| `fh.reconciliation.corrections` | counter | `kind` (`payment_status`, `delivery_status`) | Application (`ReconcilePaymentsHandler`, executado pelo Worker) | 5 ✔ |
-| `process.runtime.dotnet.*` (GC, threadpool, exceptions) | vários | — | nativa | 1 |
+| `fh.queue.message.age` | histogram (s: `SentTimestamp` → receive) | `queue` | Worker (`SqsConsumer`) | 9 ✔ |
+| `fh.queue.dlq.depth` | gauge | `queue` | Worker (`GetQueueAttributes` every 30 s) + native CloudWatch | 9 ✔ /16 |
+| `fh.reconciliation.corrections` | counter | `kind` (`payment_status`, `delivery_status`) | Application (`ReconcilePaymentsHandler`, run by the Worker) | 5 ✔ |
+| `process.runtime.dotnet.*` (GC, threadpool, exceptions) | various | — | native | 1 |
 
-## 5. Traces (spans próprios)
+## 5. Traces (our own spans)
 
-| Span | Onde | Atributos |
+| Span | Where | Attributes |
 |---|---|---|
-| `PlaceOrder` (e demais casos de uso) | Application | `order.id`, `customer.id` (id, não nome), `order.items.count` |
-| `Outbox <type>` | Infrastructure (`OutboxProcessor`, roda no Worker) | `messaging.message.id`, `outbox.attempt`; `ActivityKind.Consumer` com parent = `trace_parent` gravado na mensagem (o span do handler continua o trace da request que gerou o evento) — Fase 8 ✔ |
-| `<queue> publish` / `<queue> receive` | Infrastructure/Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id`, `messaging.receive_count`; o `receive` continua o trace do `traceparent` enviado como atributo (BL-088 ✔ Fase 9); SDK instrumentado por `OpenTelemetry.Instrumentation.AWS` |
-| `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Fase 5 ✔ pagamento: `Provider CreatePayment/GetPayment/RefundPayment`; Fase 6 ✔ entrega: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
+| `PlaceOrder` (and the other use cases) | Application | `order.id`, `customer.id` (id, not name), `order.items.count` |
+| `Outbox <type>` | Infrastructure (`OutboxProcessor`, runs in the Worker) | `messaging.message.id`, `outbox.attempt`; `ActivityKind.Consumer` with parent = the `trace_parent` stored on the message (the handler span continues the trace of the request that produced the event) — Phase 8 ✔ |
+| `<queue> publish` / `<queue> receive` | Infrastructure/Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id`, `messaging.receive_count`; `receive` continues the trace of the `traceparent` sent as a message attribute (BL-088 ✔ Phase 9); SDK instrumented by `OpenTelemetry.Instrumentation.AWS` |
+| `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Phase 5 ✔ payment: `Provider CreatePayment/GetPayment/RefundPayment`; Phase 6 ✔ delivery: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
 | `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |
-| DB | Npgsql automático | statement resumido (sem valores) |
+| DB | Npgsql, automatic | summarized statement (no values) |
 
-## 6. Alertas (planejamento; implementação na Fase 16 com CloudWatch, simulação local na Fase 11)
+## 6. Alerts (planned; implemented in Phase 16 with CloudWatch, simulated locally in Phase 11)
 
-| Alerta | Condição | Severidade | Ação (runbook) |
+| Alert | Condition | Severity | Action (runbook) |
 |---|---|---|---|
-| API 5xx rate | > 2% em 5 min | alta | RB-1 |
-| API p95 latência | > 800 ms em 5 min (`POST /orders` > 1.5 s) | média | RB-2 |
-| Provider circuit aberto | `fh.provider.circuit_state == open` por > 2 min | média | RB-3 |
-| Outbox lag | p95 > 60 s ou `pending` > 500 | alta | RB-4 |
-| Outbox/webhook failed | `failed` > 0 | média | RB-4 |
-| DLQ | `ApproximateNumberOfMessagesVisible` > 0 (DLQ) | alta | RB-5 |
-| Worker sem heartbeat | sem métrica de poll por 3 min | alta | RB-6 |
-| Webhooks rejeitados | > 20 em 5 min | média (possível ataque/chave errada) | RB-7 |
-| Login falhas | > 100 em 5 min por IP | média | RB-8 |
-| Budget AWS | > 80% do orçamento mensal | alta | destruir/pausar ambiente |
+| API 5xx rate | > 2% over 5 min | high | RB-1 |
+| API p95 latency | > 800 ms over 5 min (`POST /orders` > 1.5 s) | medium | RB-2 |
+| Provider circuit open | `fh.provider.circuit_state == open` for > 2 min | medium | RB-3 |
+| Outbox lag | p95 > 60 s or `pending` > 500 | high | RB-4 |
+| Outbox/webhook failed | `failed` > 0 | medium | RB-4 |
+| DLQ | `ApproximateNumberOfMessagesVisible` > 0 (DLQ) | high | RB-5 |
+| Worker without heartbeat | no poll metric for 3 min | high | RB-6 |
+| Rejected webhooks | > 20 over 5 min | medium (possible attack/wrong key) | RB-7 |
+| Login failures | > 100 over 5 min per IP | medium | RB-8 |
+| AWS budget | > 80% of the monthly budget | high | destroy/pause the environment |
 
-## 7. Runbook de investigação (modelo; será executado e evidenciado na Fase 11)
+## 7. Investigation runbook (template; will be executed and evidenced in Phase 11)
 
-**RB-2 — "Cliente relata lentidão ao criar pedidos"**
-1. Métrica: `http.server.request.duration` p95 por rota → `POST /orders` subiu de 300 ms para 4 s a partir de 14:02.
-2. Trace: abrir um trace lento de `POST /orders` → span `Provider CreateQuote` com 3,5 s e `retry.attempt=2`, `status_code=503`.
-3. Métricas do provider: `fh.provider.request.duration{provider=uber-like}` p95 subiu; `fh.provider.retries{reason=503}` cresceu; `circuit_state` = half-open.
-4. Logs (filtro por `trace_id`): `Warning` "Provider returned 503 couriers_busy, retrying in 1.2 s (attempt 2/3)" — contexto: `order.id`, `correlation_id`.
-5. Alerta: "Provider circuit aberto" disparou 14:05 confirmando impacto.
-6. Ação: como a cotação é síncrona no `POST /orders`, a lentidão do provider vaza para o cliente → decisão registrada: reduzir timeout total da cotação para 6 s e devolver 503 ProblemDetails com `Retry-After`; avaliar cotação assíncrona (BACKLOG).
-7. Pós-incidente: registrar em `docs/incidents/` (a criar na Fase 11) com linha do tempo, causa, ação, follow-ups.
+**RB-2 — "Customer reports slowness when creating orders"**
+1. Metric: `http.server.request.duration` p95 by route → `POST /orders` went from 300 ms to 4 s starting at 14:02.
+2. Trace: open a slow `POST /orders` trace → the `Provider CreateQuote` span took 3.5 s with `retry.attempt=2`, `status_code=503`.
+3. Provider metrics: `fh.provider.request.duration{provider=uber-like}` p95 went up; `fh.provider.retries{reason=503}` grew; `circuit_state` = half-open.
+4. Logs (filtered by `trace_id`): `Warning` "Provider returned 503 couriers_busy, retrying in 1.2 s (attempt 2/3)" — context: `order.id`, `correlation_id`.
+5. Alert: "Provider circuit open" fired at 14:05, confirming the impact.
+6. Action: because the quote is synchronous inside `POST /orders`, provider slowness leaks to the customer → recorded decision: reduce the total quote timeout to 6 s and return a 503 ProblemDetails with `Retry-After`; evaluate an asynchronous quote (BACKLOG).
+7. Post-incident: record it in `docs/incidents/` (to be created in Phase 11) with timeline, cause, action and follow-ups.
 
-**RB-4 — Outbox lag alto**: verificar worker vivo (heartbeat), `failed` (erro no `last_error`), lock preso (`SKIP LOCKED` evita), banco lento (traces Npgsql), tamanho do lote; reprocessar `Failed` pela Admin.
+**RB-4 — High outbox lag**: check that the worker is alive (heartbeat), `failed` (error in `last_error`), a stuck lock (`SKIP LOCKED` prevents it), a slow database (Npgsql traces), batch size; requeue `Failed` messages from the Admin.
 
-**RB-5 — DLQ com mensagens**: inspecionar mensagem (Admin), identificar causa (payload inválido vs. bug), corrigir, redrive.
+**RB-5 — Messages in the DLQ**: inspect the message (Admin), identify the cause (invalid payload vs. bug), fix, redrive.
 
 ## 8. Local (docker compose)
-- `aspire-dashboard` (`mcr.microsoft.com/dotnet/aspire-dashboard`) porta 18888 (UI) / 18889 (OTLP gRPC). API/Worker/Simulator exportam via `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- Variáveis padrão: `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local`.
+- `aspire-dashboard` (`mcr.microsoft.com/dotnet/aspire-dashboard`) port 18888 (UI) / 18889 (OTLP gRPC). API/Worker/Simulator export through `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Default variables: `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local`.
 
-## 9. AWS (Fase 16)
-- ADOT collector como sidecar em cada task (Api, Worker) → CloudWatch Logs (log group por serviço, retenção 14 dias em dev), CloudWatch Metrics (namespace `FulfillmentHub`), X-Ray traces.
-- Dashboards CloudWatch: "API", "Worker/Outbox/Queues", "Providers". Alarmes da seção 6 com SNS → e-mail.
-- Custo consciente: retenção curta, métricas customizadas com poucas dimensões (evitar explosão de cardinalidade), amostragem de traces (ex.: 20% em dev, 100% de erros).
+## 9. AWS (Phase 16)
+- ADOT collector as a sidecar in each task (Api, Worker) → CloudWatch Logs (one log group per service, 14-day retention in dev), CloudWatch Metrics (namespace `FulfillmentHub`), X-Ray traces.
+- CloudWatch dashboards: "API", "Worker/Outbox/Queues", "Providers". Alarms from section 6 with SNS → e-mail.
+- Cost-aware: short retention, custom metrics with few dimensions (avoid cardinality explosion), trace sampling (e.g. 20% in dev, 100% of errors).

@@ -1,15 +1,15 @@
 # DOMAIN — FulfillmentHub
 
-Modelo de domínio inicial. Foi analisado a partir da lista sugerida (Customer, Address, Product, Order, OrderItem,
-Payment, PaymentAttempt, Delivery, DeliveryQuote, DeliveryProvider, WebhookEvent, OutboxMessage, IdempotencyRecord,
-AuditLog, User, Role) e ajustado: **`DeliveryProvider` não é entidade** (um campo `Provider` na entrega basta até existir um
-segundo provider — YAGNI); `Address` é **value object** (owned), não entidade raiz; `WebhookEvent`, `OutboxMessage`,
-`IdempotencyRecord` e `AuditLog` são **registros de infraestrutura**, persistidos pelo EF Core mas fora do modelo de domínio.
+Initial domain model. It started from the suggested list (Customer, Address, Product, Order, OrderItem, Payment,
+PaymentAttempt, Delivery, DeliveryQuote, DeliveryProvider, WebhookEvent, OutboxMessage, IdempotencyRecord, AuditLog, User,
+Role) and was adjusted: **`DeliveryProvider` is not an entity** (a `Provider` field on the delivery is enough until a
+second provider exists — YAGNI); `Address` is a **value object**, not an aggregate root; `WebhookEvent`, `OutboxMessage`,
+`IdempotencyRecord` and `AuditLog` are **infrastructure records**, persisted by EF Core but outside the domain model.
 
-Convenções: IDs fortemente tipados (`OrderId` = `Guid` v7), `DateTimeOffset` em UTC, `Money` = `decimal` + `currency` ("BRL").
-Este documento evolui a cada fase; o código é a fonte da verdade a partir da Fase 2.
+Conventions: strongly-typed ids (`OrderId` = `Guid` v7), `DateTimeOffset` in UTC, `Money` = `decimal` + `currency` ("BRL").
+This document evolves with every phase; from Phase 2 on, the code is the source of truth (see §12).
 
-## 1. Mapa de módulos e agregados
+## 1. Map of modules and aggregates
 
 ```
 Catalog        Customers        Orders                 Payments                 Deliveries            Identity
@@ -20,76 +20,78 @@ Product (AR)   Customer (AR)    Order (AR)             Payment (AR)             
                                   └ OrderStatusChange[]                            └ CourierInfo (owned)
 ```
 
-Referências **entre agregados são por ID** (nunca navegação EF entre raízes diferentes): `Order.CustomerId`,
+References **between aggregates are by id** (never an EF navigation between different roots): `Order.CustomerId`,
 `OrderItem.ProductId`, `Payment.OrderId`, `Delivery.OrderId`, `Delivery.QuoteId`.
 
-## 2. Common (compartilhado)
+## 2. Common (shared)
 
-| Tipo | Espécie | Notas |
+| Type | Kind | Notes |
 |---|---|---|
-| `Entity<TId>` | base abstrata | `Id`, igualdade por id |
-| `AggregateRoot<TId>` | base abstrata | coleção de `IDomainEvent` (`Raise`, `ClearDomainEvents`) |
+| `Entity<TId>` | abstract base | `Id`, equality by id |
+| `AggregateRoot<TId>` | abstract base | collection of `IDomainEvent` (`Raise`, `ClearDomainEvents`) |
 | `IDomainEvent` | interface | `OccurredAt` |
-| `DomainException` | exceção | invariante violada; subtipos: `InvalidStateTransitionException`, `InsufficientStockException` |
-| `Money` | VO (`record`) | `Amount` (decimal, 2 casas), `Currency` (ISO 4217, "BRL"); operadores `+`, `*`; nunca mistura moedas |
-| `Address` | VO (`record`) | `Street`, `Number`, `Complement?`, `District`, `City`, `State`, `PostalCode`, `Country`, `Latitude?`, `Longitude?`; formatação para provider |
-| `EmailAddress`, `PhoneNumber` | VO | normalização + validação básica (E.164 para telefone) |
-| `OrderId`, `ProductId`, `CustomerId`, `PaymentId`, `DeliveryId`, `DeliveryQuoteId`, `UserId` | `readonly record struct (Guid)` | `New()` gera Guid v7 (`Guid.CreateVersion7()`) |
+| `DomainException` | exception | violated invariant; subtypes `InvalidStateTransitionException`, `InsufficientStockException` |
+| `Money` | value object (`record`) | `Amount` (decimal, 2 places), `Currency` (ISO 4217, "BRL"); `+`, `*` operators; never mixes currencies |
+| `Address` | value object (`record`) | `Street`, `Number`, `Complement?`, `District`, `City`, `State`, `PostalCode`, `Country`, `Latitude?`, `Longitude?`; formatted for the provider |
+| `EmailAddress`, `PhoneNumber` | value objects | normalization + basic validation (E.164 for phones) |
+| `OrderId`, `ProductId`, `CustomerId`, `PaymentId`, `DeliveryId`, `DeliveryQuoteId`, `UserId` | `readonly record struct (Guid)` | `New()` creates a Guid v7 (`Guid.CreateVersion7()`) |
 
 ## 3. Catalog — `Product` (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `Id` | `ProductId` | |
-| `Sku` | string(32) | único, imutável |
+| `Sku` | string(32) | unique, immutable |
 | `Name` | string(120) | |
 | `UnitPrice` | `Money` | > 0 |
-| `StockQuantity` | int | ≥ 0 (também `CHECK` no banco) |
-| `IsActive` | bool | inativo não pode ser pedido |
+| `StockQuantity` | int | ≥ 0 (also a `CHECK` in the database) |
+| `IsActive` | bool | inactive products cannot be ordered |
 | `CreatedAt`, `UpdatedAt` | DateTimeOffset | |
-| (`xmin`) | concurrency token | otimista |
+| (`xmin`) | concurrency token | optimistic |
 
-Comportamentos: `Reserve(int qty)` (lança `InsufficientStockException` se `qty > StockQuantity`), `Release(int qty)`, `Deactivate()`, `ChangePrice(Money)`.
-**Cenário de concorrência #1**: duas requisições reservando as últimas unidades → uma falha com `DbUpdateConcurrencyException` (xmin) ou `CHECK` → pedido retorna 409; teste demonstra.
+Behaviour: `Reserve(int qty)` (throws `InsufficientStockException` when `qty > StockQuantity`), `Release(int qty)`,
+`Deactivate()`, `ChangePrice(Money)`.
+**Concurrency scenario #1**: two requests reserving the last units → one fails with `DbUpdateConcurrencyException` (xmin)
+or the `CHECK` → the order request answers 409; a test proves it.
 
 ## 4. Customers — `Customer` (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `Id` | `CustomerId` | |
-| `UserId` | `UserId` | único; usuário com role `Customer` |
+| `UserId` | `UserId` | unique; a user with the `Customer` role |
 | `Name` | string(120) | |
-| `Email` | `EmailAddress` | único |
+| `Email` | `EmailAddress` | unique |
 | `Phone` | `PhoneNumber` | |
-| `Addresses` | `List<Address>` (owned collection) | até 5; uma marcada como padrão (`IsDefault` no owned) |
+| `Addresses` | `List<Address>` (owned collection) | up to 5; one marked as default (`IsDefault` on the owned entry) |
 | `IsActive` | bool | |
 
-Comportamentos: `AddAddress`, `RemoveAddress`, `SetDefaultAddress`, `Deactivate`.
+Behaviour: `AddAddress`, `RemoveAddress`, `SetDefaultAddress`, `Deactivate`.
 
 ## 5. Orders — `Order` (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `Id` | `OrderId` | |
-| `Number` | string(16) | legível (`FH-2026-000123`), único, gerado por sequence do banco |
+| `Number` | string(16) | human-readable (`FH-2026-000123`), unique, generated by a database sequence |
 | `CustomerId` | `CustomerId` | |
-| `Items` | `List<OrderItem>` | 1..50 itens; produto não repetido |
-| `DeliveryAddress` | `Address` (owned) | snapshot no momento do pedido |
-| `Subtotal` | `Money` | Σ itens |
-| `DeliveryFee` | `Money?` | preenchida após cotação |
-| `Total` | `Money` | subtotal + taxa (recalculado) |
-| `Status` | `OrderStatus` | ver máquina de estados |
+| `Items` | `List<OrderItem>` | 1..50 items; no repeated product |
+| `DeliveryAddress` | `Address` (owned) | snapshot taken when the order is placed |
+| `Subtotal` | `Money` | Σ items |
+| `DeliveryFee` | `Money?` | set from the delivery quote |
+| `Total` | `Money` | subtotal + fee (recomputed) |
+| `Status` | `OrderStatus` | see the state machine |
 | `CancellationReason` | enum? | `CustomerRequest`, `PaymentFailed`, `DeliveryFailed`, `OperatorAction`, `StockUnavailable` |
-| `PaymentId` | `PaymentId?` | referência |
-| `DeliveryId` | `DeliveryId?` | referência |
+| `PaymentId` | `PaymentId?` | reference |
+| `DeliveryId` | `DeliveryId?` | reference |
 | `StatusHistory` | `List<OrderStatusChange>` | `From`, `To`, `At`, `Reason?`, `ActorUserId?`, `CorrelationId` |
-| `IdempotencyKey` | string? | chave usada na criação (auditoria) |
+| `IdempotencyKey` | string? | key used at creation (audit) |
 | `CreatedAt`, `UpdatedAt` | DateTimeOffset | |
 | (`xmin`) | concurrency token | |
 
 `OrderItem`: `Id`, `ProductId`, `Sku` (snapshot), `ProductName` (snapshot), `UnitPrice` (`Money`, snapshot), `Quantity` (1..99), `LineTotal`.
 
-### Máquina de estados do pedido
+### Order state machine
 
 ```
             ┌──────────────────────────────────────────────────────────────┐
@@ -98,148 +100,157 @@ Comportamentos: `AddAddress`, `RemoveAddress`, `SetDefaultAddress`, `Deactivate`
                │          │               │              │
 Created ──► AwaitingPayment ──► Paid ──► DeliveryRequested ──► InDelivery ──► Delivered (final)
    │
-   └──► (falha imediata de validação nunca persiste o pedido)
+   └──► (an immediate validation failure never persists the order)
 ```
 
-| De | Para | Gatilho | Regras |
+| From | To | Trigger | Rules |
 |---|---|---|---|
-| — | `Created` | `Order.Place(...)` | itens válidos, estoque reservado, evento `OrderPlaced` |
-| `Created` | `AwaitingPayment` | pagamento criado no provider | `PaymentId` preenchido |
-| `Created`, `AwaitingPayment` | `Cancelled` | cliente/operador, falha de pagamento (`PaymentFailed`), timeout de pagamento | libera estoque; evento `OrderCancelled` |
-| `AwaitingPayment` | `Paid` | webhook/reconciliação confirma | evento `OrderPaid` |
-| `Paid` | `DeliveryRequested` | entrega criada no provider | `DeliveryId`, `DeliveryFee`, `Total` recalculado |
-| `Paid` | `Cancelled` | falha permanente ao cotar/criar entrega (`DeliveryFailed`) | solicita estorno → `Payment.Refund` |
-| `DeliveryRequested` | `InDelivery` | webhook `pickup_complete` (ou `pickup` com courier a caminho — decisão: **`pickup_complete`**) | |
-| `DeliveryRequested` | `Cancelled` | cliente/operador (antes da coleta) ou provider `canceled` | cancela entrega no provider; estorno |
-| `InDelivery` | `Delivered` | webhook `delivered` | final |
-| `InDelivery` | `Cancelled` | provider `returned`/`canceled` | estorno; motivo `DeliveryFailed` |
+| — | `Created` | `Order.Place(...)` | valid items, stock reserved, `OrderPlaced` event |
+| `Created` | `AwaitingPayment` | payment created at the provider | `PaymentId` set |
+| `Created`, `AwaitingPayment` | `Cancelled` | customer/operator, payment failure (`PaymentFailed`), payment timeout | releases stock; `OrderCancelled` event |
+| `AwaitingPayment` | `Paid` | webhook/reconciliation confirms | `OrderPaid` event |
+| `Paid` | `DeliveryRequested` | delivery created at the provider | `DeliveryId`, `DeliveryFee`, `Total` recomputed |
+| `Paid` | `Cancelled` | permanent failure quoting/creating the delivery (`DeliveryFailed`) | requests a refund → `Payment.Refund` |
+| `DeliveryRequested` | `InDelivery` | `pickup_complete` webhook (or `pickup` with the courier on the way — decision: **`pickup_complete`**) | |
+| `DeliveryRequested` | `Cancelled` | customer/operator (before pickup) or provider `canceled` | cancels the delivery at the provider; refund |
+| `InDelivery` | `Delivered` | `delivered` webhook | final |
+| `InDelivery` | `Cancelled` | provider `returned`/`canceled` | refund; reason `DeliveryFailed` |
 
-Toda transição inválida lança `InvalidStateTransitionException(from, to)`. Transições são **idempotentes** quando o
-estado já é o alvo (ex.: dois webhooks `delivered` → segundo é no-op, registrado no histórico como duplicado).
+Every invalid transition throws `InvalidStateTransitionException(from, to)`. Transitions are **idempotent** when the
+state is already the target (for example two `delivered` webhooks → the second one is a no-op, recorded in the history
+as a duplicate).
 
-Eventos de domínio de `Order`: `OrderPlaced`, `OrderPaid`, `OrderDeliveryRequested`, `OrderDelivered`, `OrderCancelled`.
-(Só existem porque têm consumidores: Payments, Deliveries, Catalog-release, Operations/audit.)
+`Order` domain events: `OrderPlaced`, `OrderPaid`, `OrderDeliveryRequested`, `OrderDelivered`, `OrderCancelled`.
+(They exist only because they have consumers: Payments, Deliveries, stock release, Operations/audit.)
 
 ## 6. Payments — `Payment` (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `Id` | `PaymentId` | |
-| `OrderId` | `OrderId` | **único** entre pagamentos não-finalizados (`UNIQUE` parcial: `WHERE status NOT IN (Failed, Cancelled)`) |
-| `Amount` | `Money` | = `Order.Total` no momento da criação (pré-taxa de entrega — ver decisão pendente D-P3) |
+| `OrderId` | `OrderId` | **unique** among non-final payments (partial `UNIQUE`: `WHERE status NOT IN (Failed, Cancelled)`) |
+| `Amount` | `Money` | = `Order.Total` when created (see D-P3 / D-51 for the delivery fee) |
 | `Status` | `PaymentStatus` | `Pending`, `Authorized`, `Paid`, `Failed`, `Cancelled`, `Refunded` |
 | `Provider` | string | `"simulated-psp"` |
-| `ProviderPaymentId` | string? | id no provider |
-| `ProviderIdempotencyKey` | string | derivada de `OrderId` |
+| `ProviderPaymentId` | string? | id at the provider |
+| `ProviderIdempotencyKey` | string | derived from `OrderId` |
 | `Attempts` | `List<PaymentAttempt>` | `Number`, `RequestedAt`, `CompletedAt?`, `Outcome` (`Succeeded/TransientFailure/PermanentFailure`), `ProviderErrorCode?`, `ProviderReference?` |
 | `FailureReason` | string? | |
-| `LastProviderEventAt` | DateTimeOffset? | para ordenar webhooks |
+| `LastProviderEventAt` | DateTimeOffset? | orders provider events |
 | `CreatedAt`, `UpdatedAt`, (`xmin`) | | |
 
 ```
 Pending ──► Authorized ──► Paid ──► Refunded (final)
-  │             │            
-  ├──► Failed (final)   ◄────┘ (falha na captura)
-  └──► Cancelled (final)  (pedido cancelado antes de pagar)
+  │             │
+  ├──► Failed (final)   ◄────┘ (capture failure)
+  └──► Cancelled (final)  (order cancelled before payment)
 ```
 
-Comportamentos: `RegisterAttempt`, `MarkAuthorized(providerEventAt)`, `MarkPaid(...)`, `Fail(reason)`, `Cancel()`, `MarkRefunded()`.
-Webhook mais antigo que `LastProviderEventAt` → ignorado (registrado). **Cenário de concorrência #2**: dois webhooks `paid`
-simultâneos → `UNIQUE(provider, provider_event_id)` barra duplicado exato; eventos distintos com o mesmo efeito → transição idempotente + `xmin`.
+Behaviour: `RegisterAttempt`, `MarkAuthorized(providerEventAt)`, `MarkPaid(...)`, `Fail(reason)`, `Cancel()`, `MarkRefunded()`.
+A webhook older than `LastProviderEventAt` is ignored (and recorded). **Concurrency scenario #2**: two simultaneous
+`paid` webhooks → `UNIQUE(provider, provider_event_id)` blocks the exact duplicate; distinct events with the same effect
+→ idempotent transition + `xmin`.
 
 ## 7. Deliveries
 
-### `DeliveryQuote` (aggregate root, imutável após criação)
+### `DeliveryQuote` (aggregate root, immutable once created)
 
-| Campo | Tipo |
+| Field | Type |
 |---|---|
 | `Id` | `DeliveryQuoteId` |
 | `OrderId` | `OrderId` |
 | `Provider` | string (`"uber-like-simulator"`) |
 | `ProviderQuoteId` | string (`dqt_...`) |
-| `Fee` | `Money` (convertido de centavos) |
+| `Fee` | `Money` (converted from cents) |
 | `EstimatedDropoffAt`, `DurationMinutes`, `PickupDurationMinutes` | |
 | `ExpiresAt` | DateTimeOffset — `IsExpired(now)` |
 | `CreatedAt` | |
 
 ### `Delivery` (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `Id` | `DeliveryId` | |
-| `OrderId` | `OrderId` | único entre entregas ativas |
+| `OrderId` | `OrderId` | unique among active deliveries |
 | `QuoteId` | `DeliveryQuoteId` | |
 | `Provider` | string | |
-| `ProviderDeliveryId` | string? (`del_...`) | único por provider |
-| `ProviderIdempotencyKey` | string | derivada de `OrderId` + tentativa de recotação |
+| `ProviderDeliveryId` | string? (`del_...`) | unique per provider |
+| `ProviderIdempotencyKey` | string | derived from `OrderId` + requote attempt |
 | `Status` | `DeliveryStatus` | `Requested`, `Pending`, `Pickup`, `PickupComplete`, `Dropoff`, `Delivered`, `Cancelled`, `Returned` |
 | `TrackingUrl` | string? | |
 | `Fee` | `Money` | |
 | `Courier` | `CourierInfo?` (owned) | `Name`, `PhoneMasked`, `VehicleType`, `Latitude?`, `Longitude?` |
 | `Events` | `List<DeliveryEvent>` | `ProviderEventId`, `ProviderStatus`, `OccurredAt` (provider), `ReceivedAt`, `Applied` (bool), `Note` |
-| `LastProviderEventAt` | DateTimeOffset? | ordenação |
+| `LastProviderEventAt` | DateTimeOffset? | ordering |
 | `CreatedAt`, `UpdatedAt`, (`xmin`) | | |
 
-Ordem canônica de status (para decidir "posterior"): `Pending(0) < Pickup(1) < PickupComplete(2) < Dropoff(3) < Delivered(4)`; `Cancelled`/`Returned` são finais e vencem tudo, exceto `Delivered` já aplicado (conflito → alerta operacional).
-Regra de aplicação de webhook: aplica se `OccurredAt > LastProviderEventAt` **e** rank(status) > rank(atual) (ou final); caso contrário registra `Applied=false` com motivo (`duplicate`, `out_of_order`, `stale`).
+Canonical status order (to decide what is "later"): `Pending(0) < Pickup(1) < PickupComplete(2) < Dropoff(3) < Delivered(4)`;
+`Cancelled`/`Returned` are final and win over everything except an already applied `Delivered` (conflict → operational alert).
+Webhook application rule: apply when `OccurredAt > LastProviderEventAt` **and** rank(status) > rank(current) (or final);
+otherwise record `Applied=false` with a reason (`duplicate`, `out_of_order`, `stale`).
 
-Comportamentos: `Delivery.Request(...)`, `ConfirmCreated(providerId, trackingUrl, fee)`, `ApplyProviderEvent(evt, now)`, `Cancel(reason)`.
+Behaviour: `Delivery.Request(...)`, `ConfirmCreated(providerId, trackingUrl, fee)`, `ApplyProviderEvent(evt, now)`, `Cancel(reason)`.
 
 ## 8. Identity
 
 | `User` | `Role` |
 |---|---|
-| `Id`, `Email` (único), `PasswordHash` (PBKDF2 via `PasswordHasher<T>` do ASP.NET Core Identity — só a classe, sem o framework Identity completo), `IsActive`, `Roles` (M:N), `CreatedAt`, `LastLoginAt?` | `Id`, `Name` (`Customer`, `Operator`, `Admin`) |
+| `Id`, `Email` (unique), `PasswordHash` (PBKDF2 through ASP.NET Core Identity's `PasswordHasher<T>` — the class only, not the full Identity framework), `IsActive`, `Roles` (M:N), `CreatedAt`, `LastLoginAt?` | `Id`, `Name` (`Customer`, `Operator`, `Admin`) |
 
-Sem refresh token na primeira versão (JWT de curta duração + relogin); registrado como P2.
+No refresh token in the first version (short-lived JWT + re-login); recorded as P2.
 
-## 9. Registros de infraestrutura (não são domínio)
+## 9. Infrastructure records (not domain)
 
-| Tabela | Campos principais | Uso |
+| Table | Main columns | Purpose |
 |---|---|---|
-| `outbox_messages` | `id`, `type`, `payload jsonb`, `occurred_at`, `processed_at?`, `attempts`, `next_attempt_at`, `last_error?`, `status`, `trace_parent` | outbox transacional |
-| `webhook_events` | `id`, `provider`, `provider_event_id`, `event_type`, `payload jsonb`, `signature_valid`, `received_at`, `processed_at?`, `status`, `attempts`, `last_error?`, `correlation_id` — `UNIQUE(provider, provider_event_id)` | ingestão idempotente |
-| `idempotency_records` | `key`, `scope`, `request_hash`, `status (InProgress/Completed)`, `response_status_code?`, `response_body jsonb?`, `created_at`, `expires_at` — `PK(scope, key)` | idempotência da API |
-| `audit_logs` | `id`, `at`, `actor_user_id?`, `action`, `entity_type`, `entity_id`, `data jsonb`, `correlation_id` | trilha de ações operacionais/admin |
-| `processed_messages` | `consumer`, `message_id`, `processed_at` — `PK(consumer, message_id)` | dedup de consumidores SQS (Fase 9) |
+| `outbox_messages` | `id`, `type`, `payload jsonb`, `occurred_at`, `processed_at?`, `attempts`, `next_attempt_at`, `last_error?`, `status`, `trace_parent` | transactional outbox |
+| `webhook_events` | `id`, `provider`, `provider_event_id`, `event_type`, `payload jsonb`, `signature_valid`, `received_at`, `processed_at?`, `status`, `attempts`, `last_error?`, `correlation_id` — `UNIQUE(provider, provider_event_id)` | idempotent ingestion |
+| `idempotency_records` | `key`, `scope`, `request_hash`, `status (InProgress/Completed)`, `response_status_code?`, `response_body jsonb?`, `created_at`, `expires_at` — `PK(scope, key)` | API idempotency |
+| `audit_logs` | `id`, `at`, `actor_user_id?`, `action`, `entity_type`, `entity_id`, `data jsonb`, `correlation_id` | audit trail of operator/admin actions |
+| `processed_messages` | `consumer`, `message_id`, `processed_at` — `PK(consumer, message_id)` | SQS consumer deduplication (Phase 9) |
 
-## 10. Invariantes resumidas (candidatas a testes de unidade)
+## 10. Invariants in short (unit-test candidates)
 
-1. Pedido sem itens, com quantidade ≤ 0, produto inativo ou repetido → não é criado.
-2. `Order.Total == Subtotal + (DeliveryFee ?? 0)`; moedas iguais.
-3. Reservar mais do que o estoque → `InsufficientStockException`; estoque nunca negativo.
-4. Toda transição fora da tabela → `InvalidStateTransitionException`; transição para o mesmo estado é no-op idempotente.
-5. Um pedido tem no máximo um pagamento ativo e uma entrega ativa.
-6. Cotação expirada não pode gerar entrega.
-7. Evento de entrega mais antigo que o último aplicado nunca regride o estado.
-8. Cancelar pedido pago aciona estorno; cancelar pedido com entrega em curso aciona cancelamento no provider (se permitido).
-9. `Money` não soma moedas diferentes.
+1. An order with no items, a quantity ≤ 0, an inactive product or a repeated product is never created.
+2. `Order.Total == Subtotal + (DeliveryFee ?? 0)`; same currency.
+3. Reserving more than the stock → `InsufficientStockException`; stock is never negative.
+4. Every transition outside the table → `InvalidStateTransitionException`; a transition to the same state is an idempotent no-op.
+5. An order has at most one active payment and one active delivery.
+6. An expired quote cannot produce a delivery.
+7. A delivery event older than the last applied one never regresses the state.
+8. Cancelling a paid order triggers a refund; cancelling an order with a delivery in progress triggers the provider cancellation (when allowed).
+9. `Money` never adds different currencies.
 
-## 11. Decisões pendentes de domínio
+## 11. Pending domain decisions
 
-- **D-P3 — momento de cobrar a taxa de entrega**: hoje o pagamento é criado antes da cotação (taxa desconhecida). Opções: (a) cotar antes de criar o pedido e cobrar total com taxa; (b) cobrar produtos e ajustar/cobrar a taxa depois; (c) taxa fixa estimada. Proposta: **(a)** — `POST /orders` já cota a entrega (síncrono) e congela a taxa se a cotação for válida; recotação na criação da entrega só se expirou (diferença absorvida pela "loja"). Decidir na Fase 4.
-- Refresh tokens (P2). Múltiplos endereços por cliente vs. endereço apenas no pedido (manter ambos por ora).
+- **D-P3 — when to charge the delivery fee**: originally the payment was created before the quote (fee unknown).
+  Options: (a) quote before creating the order and charge the total including the fee; (b) charge the products and
+  adjust/charge the fee later; (c) a fixed estimated fee. Proposal: **(a)** — `POST /orders` quotes the delivery
+  synchronously and freezes the fee while the quote is valid; requote at delivery creation only when it expired (the
+  difference is absorbed by the "store"). Resolved in Phase 6 (D-51), see §12.
+- Refresh tokens (P2). Multiple addresses per customer vs. address only on the order (keeping both for now).
 
-## 12. Implementação (Fase 2, 2026-09-18) — o código é a fonte da verdade a partir daqui
+## 12. Implementation (Phase 2, 2026-09-18) — from here on, the code is the source of truth
 
-Divergências e precisões em relação às seções acima, decididas ao implementar:
+Deviations from, and refinements of, the sections above, decided while implementing:
 
-| Tema | Especificado acima | Implementado | Motivo |
+| Topic | Specified above | Implemented | Why |
 |---|---|---|---|
-| `Role` | entidade + M:N `UserRole` | `enum Role { Customer, Operator, Admin }`; `User.Roles` persistido como `text[]` (`users.roles`) | conjunto fixo; join table seria cerimônia (D-27) |
-| Endereços do cliente | owned collection de `Address` com `IsDefault` | entidade filha `CustomerAddress` (`Id`, `Label`, `Address`, `IsDefault`) em `customer_addresses`, gerida só pelo agregado | owned collection não comporta bem o VO como complex type |
-| `Money`, `Address`, `CourierInfo` | owned/complex | **complex types** (EF Core 10, table splitting) — `DeliveryFee` e `Courier` são complex types opcionais (colunas nullable) | semântica de valor real (instâncias compartilhadas OK), sem identidade (D-28) |
-| `Order.Number` | `string(16)` "FH-2026-000123" | `long` gerado pela sequence `order_number_seq` (início 1000); formatação "FH-…" é apresentação | geração no banco, sem round-trip extra |
-| `DeliveryStatus` | `Requested, Pending, …` | idem + `DeliveryEventDisposition { Applied, Duplicate, OutOfOrder, Stale, Conflict }` no lugar de `Applied bool + Note` | classificação explícita e testável |
-| `DeliveryEvent` | `Applied`, `Note` | `Disposition`; `UNIQUE(delivery_id, provider_event_id)` | idem |
-| `Payment` | "webhook mais antigo é ignorado" | `ApplyProviderStatus(reported, providerEventAt, …)` retorna `false` para evento stale ou mesmo status; `StartAttempt/CompleteAttempt` com um pendente por vez | |
-| Cancelamento do pedido | tabela §5 | `Order.Cancel(reason)` valida **status × motivo** (`CustomerRequest` até `DeliveryRequested`; `PaymentFailed/Timeout` até `AwaitingPayment`; `DeliveryFailed` de `Paid` a `InDelivery`; `OperatorAction` em qualquer não-final); evento `OrderCancelled` carrega `PreviousStatus` | consumidores decidem liberar estoque/estornar pelo status anterior |
-| Reserva de estoque | "reserva com concorrência otimista" | `Product.Reserve/Release` + `xmin` (`IsRowVersion` em `uint "xmin"`) + `CHECK stock_quantity >= 0` | teste de integração prova o conflito (`DbUpdateConcurrencyException`) |
-| IDs | `readonly record struct` | idem + `IStronglyTypedId<TSelf>` (static abstract `From`) e `StronglyTypedIdConverter<TId>` registrado em `ConfigureConventions` | um conversor para todos os IDs |
-| Nomes no banco | `snake_case` | `EFCore.NamingConventions` (`UseSnakeCaseNamingConvention`) — inclusive colunas de `__EFMigrationsHistory` | D-29 |
-| Registros de infraestrutura (§9) | listados | `idempotency_records` (Fase 4), `webhook_events` (Fase 5); outbox/audit na Fase 8 | escopo da Fase 2 = agregados |
-| Taxa de entrega (§3 `DeliveryFee`, D-P3) | "preenchida após cotação" | **cotada no checkout** (D-51): `Order.SetDeliveryFee` só em `Created`, entra no `Total` e no valor do pagamento; `MarkDeliveryRequested` mantém a taxa cobrada; o custo real do provider fica em `Delivery.Fee`; provider indisponível → taxa estimada configurada | o cliente sabe o que paga antes de pagar |
-| Origem da coleta | não modelada | configuração `Fulfillment:Origin` (uma loja), sem agregado `Store` (D-51) | fora de escopo multi-loja |
-| `Delivery` `Requested` nunca confirmada | — | é cancelada (`Delivery.Cancel`) quando uma nova tentativa com nova cotação a substitui (D-55); a última tentativa fica `Requested` com a `idempotency_key` para a próxima varredura | |
+| `Role` | entity + M:N `UserRole` | `enum Role { Customer, Operator, Admin }`; `User.Roles` persisted as `text[]` (`users.roles`) | fixed set; a join table would be ceremony (D-27) |
+| Customer addresses | owned collection of `Address` with `IsDefault` | child entity `CustomerAddress` (`Id`, `Label`, `Address`, `IsDefault`) in `customer_addresses`, managed only by the aggregate | an owned collection does not fit the value object as a complex type |
+| `Money`, `Address`, `CourierInfo` | owned/complex | **complex types** (EF Core 10, table splitting) — `DeliveryFee` and `Courier` are optional complex types (nullable columns) | real value semantics (shared instances are fine), no identity (D-28) |
+| `Order.Number` | `string(16)` "FH-2026-000123" | `long` generated by the `order_number_seq` sequence (starting at 1000); the "FH-…" format is presentation | generated by the database, no extra round trip |
+| `DeliveryStatus` | `Requested, Pending, …` | same, plus `DeliveryEventDisposition { Applied, Duplicate, OutOfOrder, Stale, Conflict }` instead of `Applied bool + Note` | explicit, testable classification |
+| `DeliveryEvent` | `Applied`, `Note` | `Disposition`; `UNIQUE(delivery_id, provider_event_id)` | same |
+| `Payment` | "an older webhook is ignored" | `ApplyProviderStatus(reported, providerEventAt, …)` returns `false` for a stale event or the same status; `StartAttempt/CompleteAttempt` with one pending attempt at a time | |
+| Order cancellation | table in §5 | `Order.Cancel(reason)` validates **status × reason** (`CustomerRequest` up to `DeliveryRequested`; `PaymentFailed/Timeout` up to `AwaitingPayment`; `DeliveryFailed` from `Paid` to `InDelivery`; `OperatorAction` in any non-final state); the `OrderCancelled` event carries `PreviousStatus` | consumers decide whether to release stock / refund from the previous status |
+| Stock reservation | "reservation with optimistic concurrency" | `Product.Reserve/Release` + `xmin` (`IsRowVersion` on `uint "xmin"`) + `CHECK stock_quantity >= 0` | an integration test proves the conflict (`DbUpdateConcurrencyException`) |
+| Ids | `readonly record struct` | same, plus `IStronglyTypedId<TSelf>` (static abstract `From`) and `StronglyTypedIdConverter<TId>` registered in `ConfigureConventions` | one converter for every id |
+| Database names | `snake_case` | `EFCore.NamingConventions` (`UseSnakeCaseNamingConvention`) — including the `__EFMigrationsHistory` columns | D-29 |
+| Infrastructure records (§9) | listed | `idempotency_records` (Phase 4), `webhook_events` (Phase 5), `outbox_messages` (Phase 8), `processed_messages` (Phase 9); `audit_logs` still future | Phase 2 scope = aggregates |
+| Delivery fee (§3 `DeliveryFee`, D-P3) | "set from the delivery quote" | **quoted at checkout** (D-51): `Order.SetDeliveryFee` only in `Created`, included in `Total` and in the payment amount; `MarkDeliveryRequested` keeps the fee that was charged; the provider's real cost lives in `Delivery.Fee`; provider unavailable → configured estimated fee | the customer knows what they pay before paying |
+| Pickup origin | not modelled | `Fulfillment:Origin` configuration (one store), no `Store` aggregate (D-51) | multi-store is out of scope |
+| A `Requested` delivery that was never confirmed | — | cancelled (`Delivery.Cancel`) when a new attempt with a fresh quote replaces it (D-55); the last attempt stays `Requested` with its `idempotency_key` for the next sweep | |
 
-Invariantes de §10: todas cobertas por testes de unidade (`tests/FulfillmentHub.UnitTests/Domain/*`) e, onde o banco participa, por testes de integração (`tests/FulfillmentHub.IntegrationTests/Persistence/*`).
+Invariants in §10: all covered by unit tests (`tests/FulfillmentHub.UnitTests/Domain/*`) and, where the database takes
+part, by integration tests (`tests/FulfillmentHub.IntegrationTests/Persistence/*`).

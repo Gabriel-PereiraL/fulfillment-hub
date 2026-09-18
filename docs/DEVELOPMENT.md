@@ -1,93 +1,93 @@
-# DEVELOPMENT — guia do desenvolvedor
+# DEVELOPMENT — developer guide
 
-## 1. Pré-requisitos (verificados em 2026-09-18 nesta máquina)
+## 1. Prerequisites (verified on 2026-09-18 on this machine)
 
-| Ferramenta | Versão encontrada | Necessário |
+| Tool | Version found | Required |
 |---|---|---|
 | .NET SDK | 10.0.400 (runtime 10.0.11) — LTS | 10.0.x |
-| Git | 2.54.0.windows.1 | qualquer recente |
-| Docker Engine / Compose | 29.4.3 / v5.1.3 | Docker Desktop com WSL2 rodando (Testcontainers) |
-| Terraform | **não instalado** | só na Fase 15 (instalar via winget/choco) |
-| AWS CLI | **não instalado** | só na Fase 15 (instalar; usar SSO/credenciais temporárias) |
-| SO | Windows 11 Pro | shell: PowerShell 5.1 ou Git Bash |
+| Git | 2.54.0.windows.1 | any recent |
+| Docker Engine / Compose | 29.4.3 / v5.1.3 | Docker Desktop with WSL2 running (Testcontainers) |
+| Terraform | **not installed** | only in Phase 15 (install via winget/choco) |
+| AWS CLI | **not installed** | only in Phase 15 (install; use SSO/temporary credentials) |
+| OS | Windows 11 Pro | shell: PowerShell 5.1 or Git Bash |
 
-## 2. Primeiro setup
+## 2. First setup
 
 ```bash
-cd FulfillmentHub                      # nesta fase o repositório é apenas local
+cd FulfillmentHub
 dotnet --version                       # 10.0.x
-cp .env.example .env                   # ajuste POSTGRES_PASSWORD (valor local; .env é ignorado pelo Git)
+cp .env.example .env                   # set POSTGRES_PASSWORD (local value; .env is ignored by Git)
 docker compose --profile deps up -d    # postgres (5432) + localstack SQS (4566) + aspire-dashboard (UI 18888, OTLP gRPC 4317)
-dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Api
-dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Worker
-dotnet user-secrets set "Jwt:SigningKey" "<64 chars aleatórios, ex.: openssl rand -base64 48>" --project src/FulfillmentHub.Api
-dotnet user-secrets set "Seed:AdminPassword" "<senha dev, 12+ chars>" --project src/FulfillmentHub.Api      # idem Seed:OperatorPassword e Seed:CustomerPassword
-# Provider de pagamento (Fase 5): os valores precisam bater com src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (dev-only, não são segredos reais)
+dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<same as .env>" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<same as .env>" --project src/FulfillmentHub.Worker
+dotnet user-secrets set "Jwt:SigningKey" "<64 random chars, e.g. openssl rand -base64 48>" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Seed:AdminPassword" "<dev password, 12+ chars>" --project src/FulfillmentHub.Api      # same for Seed:OperatorPassword and Seed:CustomerPassword
+# Payment provider (Phase 5): the values must match src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (dev-only, not real secrets)
 dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Worker
-# Provider de entrega (Fase 6): idem, valores dev-only de src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (Simulator:Delivery)
+# Delivery provider (Phase 6): likewise, dev-only values from src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (Simulator:Delivery)
 dotnet user-secrets set "Providers:Delivery:ClientId" "dev-only-delivery-client-id" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Delivery:ClientSecret" "dev-only-delivery-client-secret" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Delivery:WebhookSigningKey" "dev-only-delivery-webhook-signing-key" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Delivery:ClientId" "dev-only-delivery-client-id" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Providers:Delivery:ClientSecret" "dev-only-delivery-client-secret" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Providers:Delivery:WebhookSigningKey" "dev-only-delivery-webhook-signing-key" --project src/FulfillmentHub.Worker
-dotnet tool restore                    # dotnet-ef (manifest em .config/dotnet-tools.json)
+dotnet tool restore                    # dotnet-ef (manifest in .config/dotnet-tools.json)
 dotnet ef database update --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
-dotnet run --project src/FulfillmentHub.Api -- seed       # dados fictícios de desenvolvimento (só Development; usuários admin@/operator@/customer.local)
+dotnet run --project src/FulfillmentHub.Api -- seed       # fictional development data (Development only; users admin@/operator@/customer.local)
 dotnet run --project src/FulfillmentHub.Api               # http://localhost:5000 — /scalar/v1 (OpenAPI UI), /health/live, /health/ready
 dotnet run --project src/FulfillmentHub.Worker
-dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live — envia webhooks para http://localhost:5000/api/v1/webhooks/payments
+dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live — sends webhooks to http://localhost:5000/api/v1/webhooks/payments
 ```
 
-Aspire Dashboard: http://localhost:18888 (traces/logs/métricas). Os hosts exportam OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (já está em `appsettings.Development.json`).
+Aspire Dashboard: http://localhost:18888 (traces/logs/metrics). The hosts export OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (it already is in `appsettings.Development.json`).
 
-SQS (Fase 9): em Development `Messaging:Sqs:Enabled=true` aponta para o LocalStack do compose (`http://localhost:4566`, credenciais placeholder `test`/`test` — não são segredos). O Worker cria as filas `fh-domain-events`/`fh-webhooks-inbound` (+ `-dlq`) ao subir; inspecione com `docker exec fulfillmenthub-localstack-1 awslocal sqs list-queues`. Sem LocalStack, defina `Messaging__Sqs__Enabled=false`: a outbox despacha in-process e os webhooks são processados no request (mesmo comportamento, sem fila).
+SQS (Phase 9): in Development `Messaging:Sqs:Enabled=true` points at the compose LocalStack (`http://localhost:4566`, placeholder credentials `test`/`test` — not secrets). The Worker creates the `fh-domain-events`/`fh-webhooks-inbound` queues (+ `-dlq`) on startup; inspect them with `docker exec fulfillmenthub-localstack-1 awslocal sqs list-queues`. Without LocalStack, set `Messaging__Sqs__Enabled=false`: the outbox dispatches in-process and webhooks are processed inside the request (same behaviour, no queue).
 
-## 3. Comandos do dia a dia
+## 3. Day-to-day commands
 
 ```bash
 dotnet build FulfillmentHub.slnx                        # TreatWarningsAsErrors + analyzers
-dotnet test --solution FulfillmentHub.slnx              # unit + architecture + integration (Docker necessário)
-dotnet test --project tests/FulfillmentHub.UnitTests    # um projeto
-dotnet format FulfillmentHub.slnx --verify-no-changes   # estilo (.editorconfig)
-dotnet ef migrations add <Nome> --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api --output-dir Persistence/Migrations
+dotnet test --solution FulfillmentHub.slnx              # unit + architecture + integration (Docker required)
+dotnet test --project tests/FulfillmentHub.UnitTests    # a single project
+dotnet format FulfillmentHub.slnx --verify-no-changes   # style (.editorconfig)
+dotnet ef migrations add <Name> --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api --output-dir Persistence/Migrations
 dotnet ef migrations script --idempotent -o artifacts/migrate.sql --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
 dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive
 ```
 
-Os testes usam o Microsoft.Testing.Platform (`global.json` → `test.runner`): use `--solution`/`--project`, não o caminho posicional.
+The tests use the Microsoft.Testing.Platform (`global.json` → `test.runner`): use `--solution`/`--project`, not the positional path.
 
-## 4. Configuração e segredos
+## 4. Configuration and secrets
 
-- `appsettings.json` (defaults sem segredos) → `appsettings.Development.json` (portas, níveis de log) → **user-secrets** (dev) → variáveis de ambiente (containers/AWS).
-- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` têm defaults em appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (só para o comando `seed`), `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:ApiKey`/`WebhookSigningKey` (Fase 5), `Providers:Delivery:ClientId`/`ClientSecret`/`WebhookSigningKey` (Fase 6; `BaseUrl`/`CustomerId` têm defaults), `Fulfillment:Origin:*` (endereço da loja fictícia, em `appsettings.json`), `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- Options tipadas com `ValidateOnStart`: a aplicação **não sobe** com configuração inválida — é intencional.
+- `appsettings.json` (defaults without secrets) → `appsettings.Development.json` (ports, log levels) → **user-secrets** (dev) → environment variables (containers/AWS).
+- Never commit a secret. `.env.example` documents the compose variables. Expected keys: `Database:ConnectionString` (Phase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` have defaults in appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (only for the `seed` command), `Providers:Payment:ApiKey`/`WebhookSigningKey` (Phase 5), `Providers:Delivery:ClientId`/`ClientSecret`/`WebhookSigningKey` (Phase 6; `BaseUrl`/`CustomerId` have defaults), `Fulfillment:Origin:*` (the fictional store's address, in `appsettings.json`), `Messaging:Sqs:*` (Phase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Typed options with `ValidateOnStart`: the application **does not start** with invalid configuration — this is intentional.
 
-## 5. Convenções de código
-Ver `.editorconfig` (Fase 1) e a skill principal (privada). Resumo público: C# 14, nullable habilitado, warnings como erro, file-scoped namespaces, `sealed` por padrão, records para DTOs, entidades com comportamento, `CancellationToken` em todo método assíncrono, `TimeProvider` para tempo, sem `.Result/.Wait()`.
+## 5. Code conventions
+See `.editorconfig` (Phase 1). Public summary: C# 14, nullable enabled, warnings as errors, file-scoped namespaces, `sealed` by default, records for DTOs, entities with behaviour, `CancellationToken` in every asynchronous method, `TimeProvider` for time, no `.Result/.Wait()`.
 
-## 6. Fluxo de trabalho por tarefa
-1. Ler `PROJECT_STATE.md` → item do `BACKLOG.md` (P0 da fase atual).
-2. Implementar em fatias pequenas; build e testes verdes a cada fatia.
-3. Testes conforme `TEST_STRATEGY.md` (matriz).
-4. Atualizar docs afetados + `PROJECT_STATE.md`.
-5. Commit local (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`), após `git status` limpo de arquivos privados.
+## 6. Workflow per task
+1. Read `PROJECT_STATE.md` → the `BACKLOG.md` item (P0 of the current phase).
+2. Implement in small slices; build and tests green after each slice.
+3. Tests per `TEST_STRATEGY.md` (matrix).
+4. Update the affected docs + `PROJECT_STATE.md`.
+5. Local commit (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`), after a `git status` free of private files.
 
-## 7. Estrutura de pastas (ver ARCHITECTURE.md §2) e onde colocar as coisas
-- Nova regra de negócio → `Domain/<Módulo>/`, teste em `UnitTests/<Módulo>/`.
-- Novo endpoint → `Api/<Módulo>/<Módulo>Endpoints.cs` + caso de uso em `Application/<Módulo>/` + teste em `IntegrationTests/<Módulo>/`.
-- Nova tabela → entidade + `Infrastructure/Persistence/Configurations/<Módulo>/` + migration.
-- Nova chamada externa → porta em `Application/<Módulo>/`, adapter em `Infrastructure/Providers/`, política em `Infrastructure/Providers/Resilience`.
+## 7. Folder structure (see ARCHITECTURE.md §2) and where things go
+- New business rule → `Domain/<Module>/`, test in `UnitTests/<Module>/`.
+- New endpoint → `Api/<Module>/<Module>Endpoints.cs` + use case in `Application/<Module>/` + test in `IntegrationTests/<Module>/`.
+- New table → entity + `Infrastructure/Persistence/Configurations/<Module>/` + migration.
+- New external call → port in `Application/<Module>/`, adapter in `Infrastructure/Providers/`, policy in `Infrastructure/Providers/Resilience`.
 
-## 8. Troubleshooting (será alimentado a cada fase)
-- Testcontainers no Windows: Docker Desktop precisa estar em execução com backend WSL2; primeira execução baixa imagens (lento).
-- `dotnet ef` não encontrado: `dotnet tool restore`.
-- Aplicação não sobe por Options inválidas: ler a mensagem de validação; configurar user-secrets.
-- Pedido fica `Created` (não `AwaitingPayment`): o simulator não está de pé ou `Providers:Payment:ApiKey` não bate — ver log 5101 da Api; a reconciliação do Worker recria o pagamento quando o provider voltar.
-- Pedido fica `AwaitingPayment` para sempre: webhook não chegou (URL/chave do simulator) — ver `Simulator:Payments:WebhookUrl`/`WebhookSigningKey` e o log 5200 da Api; o Worker corrige em até `Worker:Reconciliation:PendingForSeconds`.
-- Smoke rápido do fluxo de pagamento: valor com centavos `…99` recusa (pedido cancelado, estoque devolvido); `…98` aprova sem webhook (só a reconciliação resolve).
-- Pedido `Paid` sem entrega: o Worker precisa estar rodando (`Worker:DeliveryRequests:IntervalSeconds`, 10 s); ver logs 6010–6015. CEP `00000-000` é recusado no checkout (400); CEP terminado em `001` força recotação (cotação de 1 s); `002` faz a entrega voltar (`returned` → pedido cancelado, estoque devolvido); `003` entrega sem webhooks (o pedido só avança quando a reconciliação do Worker roda, `Worker:DeliveryReconciliation:QuietForSeconds` = 300).
-- Pedido parado em `DeliveryRequested` com o simulator avançando: `Simulator:Delivery:WebhookUrl` precisa apontar para `http://localhost:5000/api/v1/webhooks/deliveries` e `Providers:Delivery:WebhookSigningKey` (user-secrets) bater com `Simulator:Delivery:WebhookSigningKey`; ver log 5200 da Api (assinatura rejeitada) e 9001 do simulator (entrega do webhook falhou).
+## 8. Troubleshooting (grows with each phase)
+- Testcontainers on Windows: Docker Desktop must be running with the WSL2 backend; the first run pulls images (slow).
+- `dotnet ef` not found: `dotnet tool restore`.
+- Application does not start because of invalid Options: read the validation message; configure user-secrets.
+- Order stays `Created` (not `AwaitingPayment`): the simulator is not running or `Providers:Payment:ApiKey` does not match — see the Api log 5101; the Worker's reconciliation recreates the payment when the provider comes back.
+- Order stays `AwaitingPayment` forever: the webhook never arrived (simulator URL/key) — check `Simulator:Payments:WebhookUrl`/`WebhookSigningKey` and the Api log 5200; the Worker corrects it within `Worker:Reconciliation:PendingForSeconds`.
+- Quick smoke test of the payment flow: an amount with cents `…99` is declined (order cancelled, stock returned); `…98` is approved without a webhook (only reconciliation resolves it).
+- Order `Paid` without a delivery: the Worker must be running (`Worker:DeliveryRequests:IntervalSeconds`, 10 s); see logs 6010–6015. Postal code `00000-000` is refused at checkout (400); a postal code ending in `001` forces a requote (1-second quote); `002` makes the delivery come back (`returned` → order cancelled, stock returned); `003` delivers without webhooks (the order only advances when the Worker's reconciliation runs, `Worker:DeliveryReconciliation:QuietForSeconds` = 300).
+- Order stuck in `DeliveryRequested` while the simulator advances: `Simulator:Delivery:WebhookUrl` must point at `http://localhost:5000/api/v1/webhooks/deliveries` and `Providers:Delivery:WebhookSigningKey` (user-secrets) must match `Simulator:Delivery:WebhookSigningKey`; see the Api log 5200 (signature rejected) and the simulator log 9001 (webhook delivery failed).

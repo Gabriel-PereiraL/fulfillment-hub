@@ -1,41 +1,41 @@
-# ADR-005 — SQS como fila (LocalStack local) e critério fila vs. síncrono
+# ADR-005 — SQS as the queue (LocalStack locally) and the queue vs. synchronous criterion
 
-**Status**: aceita · **Data**: 2026-09-18 (implementação: Fase 9)
+**Status**: accepted · **Date**: 2026-09-18 (implementation: Phase 9)
 
-## Contexto
-Precisamos de processamento assíncrono com retry, DLQ e concorrência controlada para: publicação do outbox, ingestão de
-webhooks e tarefas demoradas. A meta AWS pede SQS. Localmente é preciso algo equivalente.
+## Context
+We need asynchronous processing with retry, DLQ and bounded concurrency for: outbox publishing, webhook ingestion and
+long-running tasks. The AWS target asks for SQS. Locally we need something equivalent.
 
-## Opções
-1. **SQS standard** (+ DLQ), LocalStack local, Testcontainers em testes.
-2. RabbitMQ (ótimo localmente; não é o alvo AWS; mais um serviço para operar).
-3. Kafka (excesso para o volume e para 1 dev).
-4. Só outbox + polling no banco sem fila (funciona, mas não demonstra mensageria nem DLQ real).
+## Options
+1. **SQS standard** (+ DLQ), LocalStack locally, Testcontainers in tests.
+2. RabbitMQ (great locally; not the AWS target; one more service to operate).
+3. Kafka (overkill for the volume and for one developer).
+4. Outbox + database polling only, no queue (works, but demonstrates neither messaging nor a real DLQ).
 
-## Decisão
-Opção 1. Filas `fh-domain-events` e `fh-webhooks-inbound`, cada uma com DLQ (`maxReceiveCount` = 5). Consumidores no Worker
-com long polling, `VisibilityTimeout` maior que o processamento, concorrência limitada e deduplicação persistida.
-Antes da Fase 9, o outbox despacha in-process (Fase 8) para que o sistema funcione sem fila.
+## Decision
+Option 1. `fh-domain-events` and `fh-webhooks-inbound` queues, each with a DLQ (`maxReceiveCount` = 5). Consumers in the Worker
+with long polling, a `VisibilityTimeout` longer than the processing, bounded concurrency and persisted deduplication.
+Before Phase 9 the outbox dispatches in-process (Phase 8) so that the system works without a queue.
 
-## Critério para usar fila (documentado por operação em INTEGRATIONS.md §6)
-Usar fila quando: o chamador não precisa do resultado imediato; há retry longo; há efeito externo; é preciso absorver picos
-(webhooks). Não usar quando: o usuário espera a resposta (cotação, login, consultas), ou quando a operação é trivial e local.
+## Criterion for using a queue (documented per operation in INTEGRATIONS.md §6)
+Use a queue when: the caller does not need the immediate result; there is a long retry; there is an external effect; peaks must be
+absorbed (webhooks). Do not use one when: the user is waiting for the answer (quote, login, queries), or when the operation is trivial and local.
 
 ## Trade-offs
-- SQS standard: at-least-once e sem ordem ⇒ idempotência e decisão por estado (já necessários pelo outbox).
-- LocalStack ≠ AWS 100% (pequenas diferenças de comportamento); mitigado por testes na nuvem (Fase 16).
-- Custo AWS praticamente zero para o volume.
+- SQS standard: at-least-once and unordered ⇒ idempotency and decisions by state (already required by the outbox).
+- LocalStack ≠ 100% AWS (small behavioural differences); mitigated by tests in the cloud (Phase 16).
+- AWS cost practically zero for the volume.
 
-## Consequências
-- `IMessagePublisher`/consumidores usam AWS SDK for .NET; instrumentação OTel para SQS; métricas de idade/DLQ.
-- Admin mostra DLQ e permite redrive.
+## Consequences
+- `IMessagePublisher`/consumers use the AWS SDK for .NET; OTel instrumentation for SQS; age/DLQ metrics.
+- The Admin shows the DLQ and allows redrive.
 
-## Implementação (Fase 9, 2026-09-18)
+## Implementation (Phase 9, 2026-09-18)
 
-- **Cliente e filas**: `AddFulfillmentHubMessaging()` — `Messaging:Sqs` (`Enabled`, `ServiceUrl` do LocalStack ou vazio para a AWS, `Region`, credenciais estáticas só para LocalStack, `QueuePrefix`, `MaxReceiveCount` 5, `VisibilityTimeoutSeconds` 60, `WaitTimeSeconds` 20, `BatchSize` 10, `MaxConcurrency` 4, backoff `RetryBaseDelaySeconds`/`RetryMaxDelaySeconds`); `IAmazonSQS` singleton; `SqsQueueProvisioner` cria `fh-domain-events`/`fh-webhooks-inbound` e as DLQs `-dlq` com `RedrivePolicy` (idempotente; na AWS as filas viriam do Terraform, Fase 15) e resolve nomes → URLs. LocalStack (`localstack/localstack:4`, só `sqs`) no `docker-compose.yml`, perfil `deps`.
-- **Publicação**: `IMessagePublisher` (Application) com `MessageEnvelope {id, type, payload, occurredAt, correlationId, traceParent}`; `SqsMessagePublisher` envia JSON + atributos `type`/`traceparent`; `NoOpMessagePublisher` quando `Enabled=false`. O `OutboxProcessor` publica o envelope em `fh-domain-events` (a linha da outbox vira `Processed` quando o broker aceitou) ou, com mensageria desligada, despacha in-process como na Fase 8 (D-70).
-- **Consumidores** (Worker, `SqsConsumer` base): long polling, `SemaphoreSlim(MaxConcurrency)`, `DeleteMessage` só após sucesso, `ChangeMessageVisibility` com backoff exponencial+jitter em falha (a redrive policy leva à DLQ após `MaxReceiveCount` recebimentos), profundidade da DLQ a cada 30 s (`fh.queue.dlq.depth`), spans `Consumer` ligados ao `traceparent`. `DomainEventsConsumer` → `OutboxDispatcher` com dedup: `processed_messages (consumer, message_id)` inserido **na mesma transação** do efeito do handler (rollback em `Retry`; violação de PK em corrida = duplicata). `WebhooksInboundConsumer` → `WebhookEventProcessor` (evento que não está mais `Received` é reconhecido sem trabalho).
-- **Webhooks**: a API persiste no inbox e publica um ponteiro `{webhookEventId, provider}` em `fh-webhooks-inbound`; sem broker (ou se o `SendMessage` falhar) processa in-process no mesmo request (log 5203). O parsing/aplicação por provider saiu dos endpoints para `IWebhookProcessor` (`PaymentWebhookProcessor`, `DeliveryWebhookProcessor`, chaveados por provider).
-- **Métricas/traces**: `fh.queue.messages.processed/failed{queue,consumer}`, `fh.queue.message.age{queue}`, `fh.queue.dlq.depth{queue}`; `OpenTelemetry.Instrumentation.AWS` nas chamadas do SDK.
-- **Evidência**: `SqsMessagingTests` (Testcontainers LocalStack): pedido pago e enviado atravessando as duas filas (`processed_messages` com `OrderPlaced`/`OrderPaid`); T14 mensagem reentregue → um pagamento; T15 mensagem envenenada → DLQ após 3 recebimentos (log `receive 3/3`). Smoke com compose completo (Postgres + LocalStack + Aspire) e os três hosts: `Created → … → Delivered` em 16 s; os 4 webhooks de entrega foram aplicados pelo **Worker** (0 pelo request da API); 0 erros.
-- **Limitações**: sem redrive da DLQ pela Admin (BL-089, Fase 17); `processed_messages` sem expurgo (P2); FIFO não é usado (ordem decidida por estado + timestamp do provider, como já era).
+- **Client and queues**: `AddFulfillmentHubMessaging()` — `Messaging:Sqs` (`Enabled`, LocalStack `ServiceUrl` or empty for AWS, `Region`, static credentials only for LocalStack, `QueuePrefix`, `MaxReceiveCount` 5, `VisibilityTimeoutSeconds` 60, `WaitTimeSeconds` 20, `BatchSize` 10, `MaxConcurrency` 4, backoff `RetryBaseDelaySeconds`/`RetryMaxDelaySeconds`); `IAmazonSQS` singleton; `SqsQueueProvisioner` creates `fh-domain-events`/`fh-webhooks-inbound` and the `-dlq` DLQs with a `RedrivePolicy` (idempotent; on AWS the queues would come from Terraform, Phase 15) and resolves names → URLs. LocalStack (`localstack/localstack:4`, `sqs` only) in `docker-compose.yml`, `deps` profile.
+- **Publishing**: `IMessagePublisher` (Application) with `MessageEnvelope {id, type, payload, occurredAt, correlationId, traceParent}`; `SqsMessagePublisher` sends JSON + `type`/`traceparent` attributes; `NoOpMessagePublisher` when `Enabled=false`. The `OutboxProcessor` publishes the envelope to `fh-domain-events` (the outbox row becomes `Processed` once the broker accepted it) or, with messaging disabled, dispatches in-process as in Phase 8 (D-70).
+- **Consumers** (Worker, `SqsConsumer` base): long polling, `SemaphoreSlim(MaxConcurrency)`, `DeleteMessage` only after success, `ChangeMessageVisibility` with exponential backoff + jitter on failure (the redrive policy moves the message to the DLQ after `MaxReceiveCount` receives), DLQ depth every 30 s (`fh.queue.dlq.depth`), `Consumer` spans linked to the `traceparent`. `DomainEventsConsumer` → `OutboxDispatcher` with dedup: `processed_messages (consumer, message_id)` inserted **in the same transaction** as the handler's effect (rollback on `Retry`; a PK violation in a race = duplicate). `WebhooksInboundConsumer` → `WebhookEventProcessor` (an event that is no longer `Received` is acknowledged without work).
+- **Webhooks**: the API persists to the inbox and publishes a `{webhookEventId, provider}` pointer to `fh-webhooks-inbound`; without a broker (or if `SendMessage` fails) it processes in-process in the same request (log 5203). Per-provider parsing/application moved from the endpoints to `IWebhookProcessor` (`PaymentWebhookProcessor`, `DeliveryWebhookProcessor`, keyed by provider).
+- **Metrics/traces**: `fh.queue.messages.processed/failed{queue,consumer}`, `fh.queue.message.age{queue}`, `fh.queue.dlq.depth{queue}`; `OpenTelemetry.Instrumentation.AWS` on the SDK calls.
+- **Evidence**: `SqsMessagingTests` (Testcontainers LocalStack): an order paid and shipped through both queues (`processed_messages` with `OrderPlaced`/`OrderPaid`); T14 redelivered message → one payment; T15 poison message → DLQ after 3 receives (log `receive 3/3`). Smoke test with the full compose (Postgres + LocalStack + Aspire) and the three hosts: `Created → … → Delivered` in 16 s; the 4 delivery webhooks were applied by the **Worker** (0 by the API request); 0 errors.
+- **Limitations**: no DLQ redrive from the Admin (BL-089, Phase 17); `processed_messages` without purge (P2); FIFO is not used (ordering decided by state + provider timestamp, as before).

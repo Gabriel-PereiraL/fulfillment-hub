@@ -1,27 +1,27 @@
 # ADR-002 — PostgreSQL + EF Core (Npgsql)
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-Banco relacional é requisito. Precisamos de constraints fortes, `jsonb` para payloads, concorrência otimista, `SKIP LOCKED`
-para outbox, e um provider EF Core maduro. Em nuvem, RDS.
+## Context
+A relational database is a requirement. We need strong constraints, `jsonb` for payloads, optimistic concurrency, `SKIP LOCKED`
+for the outbox, and a mature EF Core provider. In the cloud, RDS.
 
-## Opções
+## Options
 1. **PostgreSQL** (Npgsql.EntityFrameworkCore.PostgreSQL).
-2. SQL Server (mais "casa" no ecossistema .NET; licença/imagem mais pesada; RDS mais caro).
-3. MySQL/MariaDB (experiência prévia do autor; provider Pomelo; menos recursos como `SKIP LOCKED`/`jsonb` maduros).
+2. SQL Server (more "at home" in the .NET ecosystem; heavier licence/image; more expensive on RDS).
+3. MySQL/MariaDB (the author's previous experience; Pomelo provider; features such as `SKIP LOCKED`/`jsonb` less mature).
 
-## Decisão
-PostgreSQL 17 com EF Core 10 + Npgsql.
+## Decision
+PostgreSQL 17 with EF Core 10 + Npgsql.
 
-## Motivo
-`jsonb`, `xmin` como token de concorrência, `FOR UPDATE SKIP LOCKED`, índices parciais, sequences, ótimo suporte no
-Testcontainers e RDS barato (db.t4g.micro). Mostra ao avaliador que .NET não está preso ao SQL Server.
+## Rationale
+`jsonb`, `xmin` as the concurrency token, `FOR UPDATE SKIP LOCKED`, partial indexes, sequences, excellent Testcontainers
+support and cheap RDS (db.t4g.micro). It shows reviewers that .NET is not tied to SQL Server.
 
 ## Trade-offs
-- Menos "clássico" para vagas .NET corporativas SQL Server (aceito; EF Core abstrai a maior parte).
-- `timestamp with time zone` exige UTC no Npgsql (regra: sempre UTC).
+- Less "classic" for corporate SQL Server .NET jobs (accepted; EF Core abstracts most of it).
+- `timestamp with time zone` requires UTC with Npgsql (rule: always UTC).
 
-## Consequências
-- Mapeamentos usam recursos do Postgres deliberadamente e documentados (`UseXminAsConcurrencyToken`, `jsonb`, índices parciais).
-- Testes de integração usam Postgres real (Testcontainers); provider in-memory é proibido.
+## Consequences
+- Mappings use Postgres features deliberately and document them (`UseXminAsConcurrencyToken`, `jsonb`, partial indexes).
+- Integration tests use a real Postgres (Testcontainers); the in-memory provider is forbidden.

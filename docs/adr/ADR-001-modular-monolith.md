@@ -1,31 +1,31 @@
-# ADR-001 — Monólito modular com três processos
+# ADR-001 — Modular monolith with three processes
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-Um desenvolvedor, projeto de portfólio C#/.NET, produto com módulos claros (Catalog, Customers, Orders, Payments,
-Deliveries, Identity, Operations), integrações externas simuladas, necessidade de processamento assíncrono.
-O objetivo é demonstrar engenharia defensável, não "arquitetura de LinkedIn".
+## Context
+One developer, a C#/.NET portfolio project, a product with clear modules (Catalog, Customers, Orders, Payments,
+Deliveries, Identity, Operations), simulated external integrations, a need for asynchronous processing.
+The goal is to demonstrate defensible engineering, not "LinkedIn architecture".
 
-## Opções consideradas
-1. **Monólito modular** (uma solução, um banco, módulos por pasta, processos separados só onde o ciclo de vida difere).
-2. Microserviços (um serviço por módulo, bancos separados, comunicação via HTTP/fila).
-3. Monólito "clássico" em um único processo (API + workers no mesmo host).
+## Options considered
+1. **Modular monolith** (one solution, one database, modules as folders, separate processes only where the lifecycle differs).
+2. Microservices (one service per module, separate databases, communication over HTTP/queues).
+3. "Classic" monolith in a single process (API + workers in the same host).
 
-## Decisão
-Opção 1: monólito modular com **três processos**: `Api` (HTTP), `Worker` (outbox, consumidores, reconciliação) e
-`ProviderSimulator` (sistemas externos simulados). `Admin` (Blazor) será um quarto host na Fase 17.
-Camadas em projetos (`Domain`, `Application`, `Infrastructure`) + pastas por módulo + `ArchitectureTests`.
+## Decision
+Option 1: a modular monolith with **three processes**: `Api` (HTTP), `Worker` (outbox, consumers, reconciliation) and
+`ProviderSimulator` (simulated external systems). `Admin` (Blazor) will be a fourth host in Phase 17.
+Layers as projects (`Domain`, `Application`, `Infrastructure`) + folders per module + `ArchitectureTests`.
 
-## Motivo
-- Microserviços multiplicam custo operacional (deploy, rede, observabilidade distribuída, consistência) sem ganho para 1 dev.
-- Separar API e Worker é justificado: perfis de escala e reinício diferentes, e é o que se faz no ECS (dois serviços).
-- O Simulator precisa ser processo separado para que a integração HTTP seja real (rede, timeouts, falhas).
+## Rationale
+- Microservices multiply operational cost (deploys, network, distributed observability, consistency) with no gain for one developer.
+- Separating the API and the Worker is justified: different scaling and restart profiles, and it is what one does on ECS (two services).
+- The Simulator must be a separate process so that the HTTP integration is real (network, timeouts, failures).
 
 ## Trade-offs
-- Um único banco = acoplamento de schema entre módulos (aceito; comunicação entre módulos por eventos/outbox onde faz sentido).
-- Sem isolamento de falhas por módulo (aceito; resiliência é por integração, não por serviço).
+- A single database = schema coupling between modules (accepted; communication between modules through events/outbox where it makes sense).
+- No fault isolation per module (accepted; resilience is per integration, not per service).
 
-## Consequências
-- Testes de arquitetura garantem a direção das dependências.
-- Se um módulo precisar escalar isoladamente no futuro, a extração é possível porque as fronteiras já existem.
+## Consequences
+- Architecture tests enforce the dependency direction.
+- If a module needs to scale on its own in the future, extraction is possible because the boundaries already exist.

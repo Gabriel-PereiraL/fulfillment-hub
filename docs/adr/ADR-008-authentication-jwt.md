@@ -1,29 +1,29 @@
-# ADR-008 — Usuários próprios + JWT bearer + policies
+# ADR-008 — Own users + JWT bearer + policies
 
-**Status**: aceita · **Data**: 2026-09-18 (implementação: Fase 3)
+**Status**: accepted · **Date**: 2026-09-18 (implementation: Phase 3)
 
-## Contexto
-A API precisa de autenticação e autorização por papel (`Customer`, `Operator`, `Admin`) e a Admin UI (Blazor) precisa reutilizar as mesmas regras.
-Queremos demonstrar autenticação/autorização no ASP.NET Core sem delegar a um IdP externo.
+## Context
+The API needs authentication and role-based authorization (`Customer`, `Operator`, `Admin`) and the Admin UI (Blazor) must reuse the same rules.
+We want to demonstrate authentication/authorization in ASP.NET Core without delegating to an external IdP.
 
-## Opções
-1. ASP.NET Core Identity completo (tabelas, UI, managers).
-2. IdP externo (Auth0/Cognito/Keycloak) com OIDC.
-3. **Usuários próprios** (tabelas `users`/`roles`), `PasswordHasher<T>` do Identity (só a classe), JWT emitido pela API.
-4. Cookies apenas.
+## Options
+1. Full ASP.NET Core Identity (tables, UI, managers).
+2. External IdP (Auth0/Cognito/Keycloak) with OIDC.
+3. **Own users** (`users`/`roles` tables), Identity's `PasswordHasher<T>` (the class only), JWT issued by the API.
+4. Cookies only.
 
-## Decisão
-Opção 3 para a API (JWT HS256, chave ≥ 256 bits em secrets, `exp` 15 min, `iss/aud` validados, claims de papel e `customer_id`).
-`FallbackPolicy` = autenticado; policies por papel; autorização por recurso nos casos de uso. Admin Blazor: cookie auth com as mesmas policies.
-Webhooks: HMAC (não JWT). Refresh token: P2.
+## Decision
+Option 3 for the API (JWT HS256, key ≥ 256 bits in secrets, `exp` 15 min, validated `iss/aud`, role and `customer_id` claims).
+`FallbackPolicy` = authenticated; per-role policies; resource authorization in the use cases. Admin Blazor: cookie auth with the same policies.
+Webhooks: HMAC (not JWT). Refresh token: P2.
 
-## Motivo
-Mostra o mecanismo completo (hash, emissão, validação, policies) em código próprio e pequeno; Identity completo traz muito o que não usamos;
-IdP externo esconde justamente o que se quer demonstrar e adiciona dependência/custo.
+## Rationale
+Shows the whole mechanism (hashing, issuance, validation, policies) in small in-house code; full Identity brings a lot we do not use;
+an external IdP hides precisely what we want to demonstrate and adds a dependency/cost.
 
 ## Trade-offs
-- Sem rotação/revogação de token na v1 (exp curta mitiga); sem MFA; sem OAuth para terceiros. Documentado como extensões.
-- HS256 exige o mesmo segredo em Api/Admin (aceito; RS256 é P3 se surgir mais de um emissor/validador).
+- No token rotation/revocation in v1 (the short expiry mitigates it); no MFA; no OAuth for third parties. Documented as extensions.
+- HS256 requires the same secret in Api/Admin (accepted; RS256 is P3 if more than one issuer/validator appears).
 
-## Consequências
-- SECURITY.md registra o desenho e as evidências; testes T16/BL-149 cobrem 401/403/acesso cruzado.
+## Consequences
+- SECURITY.md records the design and the evidence; tests T16/BL-149 cover 401/403/cross access.

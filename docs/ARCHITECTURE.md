@@ -1,177 +1,202 @@
 # ARCHITECTURE — FulfillmentHub
 
-## 1. Estilo: monólito modular, três processos
+## 1. Style: modular monolith, three processes
 
-Um único produto, uma única solução, um único banco. Três processos porque têm ciclos de vida e perfis de escala
-diferentes — não porque "microserviço é bonito":
+One product, one solution, one database. Three processes because they have different lifecycles and scaling profiles —
+not because "microservices look good":
 
-| Processo | Projeto | Por que é separado |
+| Process | Project | Why it is separate |
 |---|---|---|
-| **API** | `FulfillmentHub.Api` | atende HTTP (clientes, admin, webhooks); escala por request; deve responder rápido |
-| **Worker** | `FulfillmentHub.Worker` | outbox publisher, consumidores SQS, reconciliação; escala por backlog; pode reiniciar sem derrubar a API |
-| **Provider Simulator** | `FulfillmentHub.ProviderSimulator` | representa sistemas **externos**; precisa ser um processo separado para a integração HTTP ser real (rede, timeout, falhas) |
+| **API** | `FulfillmentHub.Api` | serves HTTP (customers, admin, webhooks); scales per request; must answer fast |
+| **Worker** | `FulfillmentHub.Worker` | outbox publisher, SQS consumers, reconciliation; scales with the backlog; can restart without taking the API down |
+| **Provider Simulator** | `FulfillmentHub.ProviderSimulator` | stands in for **external** systems; has to be a separate process so the HTTP integration is real (network, timeouts, failures) |
 
-Tudo compartilha `Domain`, `Application` e `Infrastructure` (exceto o Simulator, que é propositalmente independente
-para não "vazar" conhecimento interno do FulfillmentHub para dentro do "provider").
+Everything shares `Domain`, `Application` and `Infrastructure` — except the Simulator, which is deliberately independent
+so no FulfillmentHub internals leak into the "provider".
 
-O que **não** existe e por quê (ADR-001): microserviços (custo operacional sem benefício em um time de 1), Kubernetes
-(ECS Fargate resolve), Kafka (SQS resolve com muito menos operação), service mesh, API gateway dedicado, CQRS com
-bancos separados, event sourcing.
+What does **not** exist, and why (ADR-001): microservices (operational cost with no benefit for a team of one), Kubernetes
+(ECS Fargate covers it), Kafka (SQS covers it with far less operation), service mesh, a dedicated API gateway, CQRS with
+separate databases, event sourcing.
 
-## 2. Solução e projetos
+## 2. Solution and projects
 
 ```
-FulfillmentHub.sln
+FulfillmentHub.slnx
 ├── Directory.Build.props            # Nullable, ImplicitUsings, TreatWarningsAsErrors, analyzers, LangVersion
 ├── Directory.Packages.props         # Central Package Management
 ├── .editorconfig
-├── docker-compose.yml               # postgres, localstack (SQS), aspire-dashboard (OTLP), simulator
+├── docker-compose.yml               # postgres, localstack (SQS), aspire-dashboard (OTLP)
 ├── src/
-│   ├── FulfillmentHub.Domain/           # entidades, VOs, eventos de domínio, exceções de domínio. Sem NuGet de framework.
-│   ├── FulfillmentHub.Application/      # casos de uso, DTOs, portas (interfaces p/ externos), IFulfillmentHubDbContext, Result
-│   ├── FulfillmentHub.Infrastructure/   # EF Core + Npgsql, migrations, outbox, SQS, HttpClients dos providers, auth (JWT/hash), telemetria
-│   ├── FulfillmentHub.Api/              # Minimal APIs, filtros (idempotência, validação), ProblemDetails, OpenAPI, composition root
-│   ├── FulfillmentHub.Worker/           # BackgroundServices: OutboxPublisher, consumers, reconciliation
-│   ├── FulfillmentHub.ProviderSimulator/# Minimal APIs que imitam providers (delivery "Uber-like" e pagamento) + envio de webhooks
-│   └── FulfillmentHub.Admin/            # Blazor Web App (Fase 17) — usa Application/Infrastructure diretamente
+│   ├── FulfillmentHub.Domain/           # entities, value objects, domain events, domain exceptions. No framework packages.
+│   ├── FulfillmentHub.Application/      # use cases, DTOs, ports (interfaces to the outside), IFulfillmentHubDbContext, Result
+│   ├── FulfillmentHub.Infrastructure/   # EF Core + Npgsql, migrations, outbox, SQS, provider HttpClients, auth (JWT/hashing), telemetry
+│   ├── FulfillmentHub.Api/              # Minimal APIs, endpoint filters (idempotency), ProblemDetails, OpenAPI, composition root
+│   ├── FulfillmentHub.Worker/           # BackgroundServices: outbox publisher, queue consumers, reconciliation
+│   ├── FulfillmentHub.ProviderSimulator/# Minimal APIs imitating the providers (delivery "Uber-like" and payment) + webhook delivery
+│   └── FulfillmentHub.Admin/            # Blazor Web App (Phase 17, not created yet) — uses Application/Infrastructure directly
 └── tests/
-    ├── FulfillmentHub.UnitTests/        # domínio, casos de uso com fakes, políticas de retry, mapeamentos
+    ├── FulfillmentHub.UnitTests/        # domain, provider clients against a scripted transport, retry policies, mappings
     ├── FulfillmentHub.IntegrationTests/ # WebApplicationFactory + Testcontainers (PostgreSQL, LocalStack) + simulator in-process
-    ├── FulfillmentHub.ArchitectureTests/# NetArchTest: direção de dependências, convenções
-    └── FulfillmentHub.E2ETests/         # poucos fluxos completos com compose (Fase 12)
+    ├── FulfillmentHub.ArchitectureTests/# NetArchTest: dependency direction, conventions
+    └── FulfillmentHub.E2ETests/         # a few full flows against compose (Phase 12, not created yet)
 ```
 
-### Direção de dependências (validada por ArchitectureTests)
+### Dependency direction (enforced by ArchitectureTests)
 
 ```
 Api ──────► Application ──► Domain
  │              ▲
  ▼              │
-Infrastructure ─┘  (Infrastructure implementa as portas de Application e o DbContext)
+Infrastructure ─┘  (Infrastructure implements Application's ports and the DbContext)
 Worker ───► Application, Infrastructure
 Admin ────► Application, Infrastructure
-ProviderSimulator ──► (nada do FulfillmentHub)
+ProviderSimulator ──► (nothing from FulfillmentHub)
 ```
 
-Regras:
-- `Domain` não referencia nenhum pacote além da BCL.
-- `Application` referencia `Domain` e o pacote `Microsoft.EntityFrameworkCore` (para `DbSet<T>`/LINQ via `IFulfillmentHubDbContext`).
-  É uma dependência assumida e documentada (ADR-006): o custo de abstrair o EF Core é maior que o benefício.
-- `Infrastructure` referencia `Application` (implementa portas) — nunca o contrário.
-- Hosts (`Api`, `Worker`, `Admin`) são composition roots: registram módulos via extension methods.
+Rules:
+- `Domain` references no package beyond the BCL.
+- `Application` references `Domain` and the `Microsoft.EntityFrameworkCore` package (for `DbSet<T>`/LINQ through
+  `IFulfillmentHubDbContext`). This is an accepted, documented dependency (ADR-006): abstracting EF Core away costs
+  more than it gives.
+- `Infrastructure` references `Application` (implements its ports) — never the other way round.
+- Hosts (`Api`, `Worker`, `Admin`) are composition roots: they register modules through extension methods.
 
-## 3. Organização por módulo
+## 3. Organization by module
 
-Dentro de cada projeto, pastas por **módulo de domínio** (bounded contexts leves), não por tipo técnico:
+Inside each project, folders follow the **domain module** (lightweight bounded contexts), not the technical type:
 
 ```
 Domain/
   Common/        Entity, AggregateRoot, IDomainEvent, DomainException, Money, Address, strongly-typed ids
   Catalog/       Product
-  Customers/     Customer (+ endereços salvos)
-  Orders/        Order, OrderItem, OrderStatus, OrderStatusChange, eventos (OrderPlaced, OrderPaid, OrderCancelled...)
-  Payments/      Payment, PaymentAttempt, PaymentStatus, eventos
-  Deliveries/    Delivery, DeliveryQuote, DeliveryEvent, DeliveryStatus, eventos
+  Customers/     Customer (+ saved addresses)
+  Orders/        Order, OrderItem, OrderStatus, OrderStatusChange, events (OrderPlaced, OrderPaid, OrderCancelled...)
+  Payments/      Payment, PaymentAttempt, PaymentStatus, events
+  Deliveries/    Delivery, DeliveryQuote, DeliveryEvent, DeliveryStatus
   Identity/      User, Role
 
 Application/
-  Common/        Result, Error, IFulfillmentHubDbContext, IClock? (não: usar TimeProvider), IIdempotencyStore
+  Common/        Result, Failure, IFulfillmentHubDbContext (time comes from TimeProvider, no IClock)
   Orders/        PlaceOrderHandler, CancelOrderHandler, OrderQueries, DTOs
-  Payments/      CreatePaymentForOrderHandler, ApplyPaymentWebhookHandler, ReconcilePaymentsHandler, IPaymentGatewayClient
-  Deliveries/    RequestDeliveryHandler, ApplyDeliveryWebhookHandler, CancelDeliveryHandler, IDeliveryProviderClient
-  Catalog/, Customers/, Identity/, Operations/
+  Payments/      CreatePaymentForOrderHandler, ApplyPaymentWebhookHandler, ReconcilePaymentsHandler, RefundPaymentHandler, IPaymentGatewayClient
+  Deliveries/    CheckoutDeliveryQuoter, RequestDeliveryHandler, ApplyDeliveryWebhookHandler, ReconcileDeliveriesHandler, IDeliveryProviderClient
+  Outbox/        IOutboxHandler + handlers per domain event
+  Messaging/     IMessagePublisher, queue names, queue metrics
+  Catalog/, Customers/, Identity/, Webhooks/
 
 Infrastructure/
-  Persistence/   FulfillmentHubDbContext, Configurations/<Módulo>/, Migrations/, Interceptors (outbox, audit), conversores
-  Outbox/        OutboxMessage, OutboxProcessor
-  Messaging/     SQS publisher/consumer, LocalStack config
-  Providers/     DeliveryProvider/UberLikeDeliveryClient (+ contratos), PaymentGateway/SimulatedPaymentGatewayClient
+  Persistence/   FulfillmentHubDbContext, Configurations/<Module>/, Migrations/, conventions (ids, value objects, xmin)
+  Outbox/        OutboxMessage, OutboxInterceptor, OutboxProcessor, OutboxDispatcher, OutboxEventSerializer
+  Messaging/     SQS client, queue provisioner, publisher, processed_messages
+  Providers/     shared resilience pipeline; Payments/ and Deliveries/ typed clients + webhook processors
+  Webhooks/      WebhookEvent, WebhookInbox, WebhookSignatureVerifier, WebhookEventProcessor
   Identity/      PasswordHasher, JwtTokenService
-  Telemetry/     ActivitySources, Meters, extensões de registro OTel
+  Telemetry/     ActivitySource, Meter, OpenTelemetry registration
   Idempotency/   IdempotencyRecord store
 ```
 
-Comunicação **entre módulos** dentro do monólito:
-- Preferencialmente por **eventos via outbox** (Orders → Payments → Deliveries), o que já é o fluxo do produto.
-- Chamadas diretas a casos de uso de outro módulo são permitidas quando síncronas por natureza (ex.: `PlaceOrder`
-  consulta `Catalog` para preço/estoque no mesmo commit). Não criar "anti-corruption layer" entre módulos internos.
-- Um único `DbContext` e um único schema (tabelas com prefixo por módulo não é necessário; nomes claros bastam).
+Communication **between modules** inside the monolith:
+- Preferably through **domain events via the outbox** (Orders → Payments → Deliveries), which is the product flow anyway.
+- Direct calls into another module's use case are allowed when the operation is synchronous by nature (for example
+  `PlaceOrder` reads `Catalog` for price and stock in the same commit). No "anti-corruption layer" between internal modules.
+- One `DbContext`, one schema (no per-module table prefixes; clear names are enough).
 
-## 4. Padrões adotados e recusados
+## 4. Patterns adopted and rejected
 
-| Tema | Adotado | Recusado (e por quê) |
+| Topic | Adopted | Rejected (and why) |
 |---|---|---|
-| Acesso a dados | `IFulfillmentHubDbContext` (DbSets + SaveChanges) direto nos casos de uso | repository genérico/UoW (duplicam o EF Core), specification pattern |
-| Orquestração de casos de uso | classes explícitas por caso de uso, DI direto | MediatR/Mediator (dispatcher sem problema que o justifique; MediatR virou comercial em 2025) |
-| API | Minimal APIs, `MapGroup` por módulo, `TypedResults`, registro explícito | controllers (nenhum ganho aqui), auto-discovery por reflexão |
-| Erros | ProblemDetails (RFC 9457) + `IExceptionHandler`; `Result` pequeno para falhas esperadas; `DomainException` para invariantes | Result em todo método; exceptions para fluxo |
-| Validação | validação nativa de Minimal APIs (.NET 10, DataAnnotations) + invariantes de domínio | FluentValidation (dependência sem necessidade) |
-| Mapeamento | métodos explícitos (`ToResponse()`), projeções LINQ | AutoMapper/Mapster |
-| Eventos | domain events → outbox → SQS → worker (Fases 8–9 ✔; in-process quando `Messaging:Sqs:Enabled=false`) | handlers in-process com efeitos externos (dual write) |
-| Consistência | outbox transacional, consumidores idempotentes, constraints no banco | 2PC, sagas com orquestrador dedicado |
-| Concorrência | otimista (`xmin`) + constraints (`CHECK`, `UNIQUE`) | locks pessimistas por padrão (só onde justificado: `SKIP LOCKED` no outbox) |
-| HTTP externo | typed `HttpClient` + `Microsoft.Extensions.Http.Resilience` | Polly v7 manual, retry cego |
-| Logging | `Microsoft.Extensions.Logging` + `LoggerMessage` + OpenTelemetry | Serilog (bom, mas dispensável aqui) |
-| Tempo | `TimeProvider` injetado | `DateTime.Now` |
-| Configuração | Options tipadas validadas no start | `IConfiguration["x"]` espalhado |
+| Data access | `IFulfillmentHubDbContext` (DbSets + SaveChanges) used directly by use cases | generic repository / unit of work (they duplicate EF Core), specification pattern |
+| Use-case orchestration | explicit classes per use case, plain DI | MediatR/Mediator (a dispatcher without a problem to solve; MediatR went commercial in 2025) |
+| API | Minimal APIs, one `MapGroup` per module, `TypedResults`, explicit registration | controllers (no gain here), reflection-based auto-discovery |
+| Errors | ProblemDetails (RFC 9457) + `IExceptionHandler`; a small `Result` for expected failures; `DomainException` for invariants | Result on every method; exceptions for control flow |
+| Validation | native Minimal API validation (.NET 10, DataAnnotations) + domain invariants | FluentValidation (a dependency without a need) |
+| Mapping | explicit methods (`ToResponse()`), LINQ projections | AutoMapper/Mapster |
+| Events | domain events → outbox → SQS → worker (Phases 8–9 ✔; in-process when `Messaging:Sqs:Enabled=false`) | in-process handlers with external effects (dual write) |
+| Consistency | transactional outbox, idempotent consumers, database constraints | 2PC, sagas with a dedicated orchestrator |
+| Concurrency | optimistic (`xmin`) + constraints (`CHECK`, `UNIQUE`) | pessimistic locks by default (only where justified: `SKIP LOCKED` in the outbox) |
+| Outbound HTTP | typed `HttpClient` + `Microsoft.Extensions.Http.Resilience` | manual Polly v7, blind retries |
+| Logging | `Microsoft.Extensions.Logging` + `LoggerMessage` + OpenTelemetry | Serilog (good, but unnecessary here) |
+| Time | injected `TimeProvider` | `DateTime.Now` |
+| Configuration | typed Options validated at startup | `IConfiguration["x"]` scattered around |
 
-## 5. Componentes transversais
+## 5. Cross-cutting components
 
-### 5.1 Idempotência (ADR-010)
-- **API**: header `Idempotency-Key` obrigatório em `POST /orders` (e demais POSTs mutáveis). Filtro de endpoint:
-  chave + escopo (usuário) + hash do body → `IdempotencyRecord`. Mesma chave + mesmo hash → devolve resposta armazenada;
-  mesma chave + hash diferente → `422`; chave em andamento → `409`. Expira em 24h.
-- **Webhooks**: `UNIQUE (provider, provider_event_id)` em `WebhookEvent`; inserção antes de qualquer efeito; duplicata → `200` sem reprocessar.
-- **Saída**: `idempotency_key` enviado ao provider de entrega na criação; chave derivada do `OrderId` (retry seguro).
-- **Consumidores** (Fase 9 ✔): `processed_messages (consumer, message_id)` inserida na mesma transação do efeito (`OutboxDispatcher`); o consumidor de webhooks usa o próprio status do `WebhookEvent`.
+### 5.1 Idempotency (ADR-010)
+- **API**: `Idempotency-Key` header required on `POST /orders` (and every other mutating POST). Endpoint filter:
+  key + scope (user) + body hash → `IdempotencyRecord`. Same key + same hash → stored response is replayed;
+  same key + different hash → `422`; key in progress → `409`. Expires after 24 h.
+- **Webhooks**: `UNIQUE (provider, provider_event_id)` on `WebhookEvent`; inserted before any effect; duplicate → `200` without reprocessing.
+- **Outbound**: `idempotency_key` sent to the delivery provider on creation; derived from the `OrderId` (retries are safe).
+- **Consumers** (Phase 9 ✔): `processed_messages (consumer, message_id)` inserted in the same transaction as the effect
+  (`OutboxDispatcher`); the webhook consumer uses the `WebhookEvent` status itself.
 
-### 5.2 Outbox transacional (ADR-004)
-- Agregados acumulam `IDomainEvent`; um `SaveChangesInterceptor` converte em `OutboxMessage` (tipo, payload JSON, `occurred_at`, trace context) **no mesmo commit**.
-- `OutboxProcessor`/`OutboxPublisherService` (Worker) lê em lote com `FOR UPDATE SKIP LOCKED` + lease, publica no SQS (Fase 9 ✔; handlers in-process quando a mensageria está desligada), marca `processed_at`;
-  falha → `attempts++`, `next_attempt_at` com backoff exponencial + jitter; após N → `Failed` (visível na Admin, reprocessável).
-- Garantia: **at-least-once**. Consequência: todo consumidor é idempotente.
+### 5.2 Transactional outbox (ADR-004)
+- Aggregates collect `IDomainEvent`s; a `SaveChangesInterceptor` turns them into `OutboxMessage` rows (type, JSON payload,
+  `occurred_at`, trace context) **in the same commit**.
+- `OutboxProcessor`/`OutboxPublisherService` (Worker) claims a batch with `FOR UPDATE SKIP LOCKED` + lease, publishes to
+  SQS (Phase 9 ✔; in-process handlers when messaging is off) and marks `processed_at`; a failure increments `attempts`
+  and schedules `next_attempt_at` with exponential backoff + jitter; after N attempts → `Failed` (visible and
+  retryable by an administrator).
+- Guarantee: **at-least-once**. Consequence: every consumer is idempotent.
 
-### 5.3 Mensageria (ADR-005)
-- Filas SQS standard: `fh-domain-events` (saída do outbox), `fh-webhooks-inbound` (webhooks aceitos pela API para processamento assíncrono), cada uma com DLQ.
-- Local: **LocalStack** no compose (perfil `deps`). Testes: Testcontainers LocalStack (`SqsMessagingTests`). Implementação: ADR-005 "Implementação" (Fase 9 ✔): `SqsConsumer` base (long polling, concorrência limitada, delete após sucesso, backoff por visibilidade), `DomainEventsConsumer`, `WebhooksInboundConsumer`, `SqsQueueProvisioner` (filas + DLQ com redrive criadas no start).
-- Quando **não** usar fila: cotação de entrega (síncrona, o usuário espera a taxa), login, consultas. Documentado por caso em INTEGRATIONS.md.
+### 5.3 Messaging (ADR-005)
+- Standard SQS queues: `fh-domain-events` (outbox output) and `fh-webhooks-inbound` (webhooks accepted by the API for
+  asynchronous processing), each with a dead-letter queue.
+- Locally: **LocalStack** in compose (profile `deps`). Tests: Testcontainers LocalStack (`SqsMessagingTests`).
+  Implementation (ADR-005 "Implementation", Phase 9 ✔): `SqsConsumer` base (long polling, bounded concurrency, delete
+  after success, visibility backoff), `DomainEventsConsumer`, `WebhooksInboundConsumer`, `SqsQueueProvisioner`
+  (queues + DLQ with redrive policy created at startup).
+- When **not** to use a queue: the delivery quote (synchronous, the user waits for the fee), login, queries.
+  Documented per operation in INTEGRATIONS.md.
 
-### 5.4 Resiliência
-- Pipelines por provider (`AddResilienceHandler`): timeout total, retry (exp. + jitter) com predicado por status (INTEGRATIONS.md §retry), circuit breaker, timeout por tentativa.
-- Bulkhead: limite de concorrência nos consumidores (`SemaphoreSlim`), não por provider inicialmente.
-- Rate limiting de entrada na API (`AddRateLimiter`): por usuário/IP em endpoints públicos e webhooks.
+### 5.4 Resilience
+- One pipeline per provider (`AddResilienceHandler`): total timeout, retry (exponential + jitter) with a per-status
+  predicate (INTEGRATIONS.md §4), circuit breaker, per-attempt timeout.
+- Bulkhead: concurrency limit in the consumers (`SemaphoreSlim`), not per provider for now.
+- Inbound rate limiting on the API (`AddRateLimiter`): per user/IP on public endpoints and webhooks.
 
-### 5.5 Segurança (SECURITY.md)
-- JWT bearer emitido pela própria API; roles/policies; `FallbackPolicy` = autenticado; webhooks autenticados por assinatura HMAC + tolerância de timestamp.
-- Secrets: user-secrets/env local; AWS Secrets Manager em nuvem.
+### 5.5 Security (SECURITY.md)
+- JWT bearer issued by the API itself; roles/policies; `FallbackPolicy` = authenticated; webhooks authenticated by HMAC
+  signature plus a timestamp window.
+- Secrets: user-secrets/environment locally; AWS Secrets Manager in the cloud.
 
-### 5.6 Observabilidade (OBSERVABILITY.md)
-- OpenTelemetry: traces (ASP.NET Core, HttpClient, Npgsql, AWS SDK, spans próprios), métricas (runtime, ASP.NET, próprias: outbox lag, retries, webhook failures, provider latency), logs correlacionados por `trace_id`.
-- Local: Aspire Dashboard (container) recebendo OTLP. AWS: ADOT collector sidecar → CloudWatch (logs/metrics) e X-Ray (traces).
+### 5.6 Observability (OBSERVABILITY.md)
+- OpenTelemetry: traces (ASP.NET Core, HttpClient, Npgsql, AWS SDK, own spans), metrics (runtime, ASP.NET, own: outbox
+  lag, retries, webhook failures, provider latency), logs correlated by `trace_id`.
+- Locally: Aspire Dashboard (container) receiving OTLP. AWS: ADOT collector sidecar → CloudWatch (logs/metrics) and X-Ray (traces).
 
-## 6. Fluxos críticos (sequências)
+## 6. Critical flows (sequences)
 
-### 6.1 PlaceOrder (síncrono, transacional)
-1. Filtro de idempotência (chave/escopo/hash).
-2. Validação de forma (DataAnnotations).
-3. Handler: carrega cliente; carrega produtos (tracked); `Order.Place(...)` (invariantes); `product.Reserve(qty)` (lança se insuficiente → `Result` de falha);
-   adiciona `OrderPlaced` ao agregado.
-4. `SaveChangesAsync`: interceptor grava outbox; `xmin` do produto detecta corrida → `DbUpdateConcurrencyException` → o handler retorna `409 conflict` (cliente repete com a mesma chave).
-5. `201 Created` com `Location`; resposta armazenada no `IdempotencyRecord`.
+### 6.1 PlaceOrder (synchronous, transactional)
+1. Idempotency filter (key/scope/hash).
+2. Shape validation (DataAnnotations).
+3. Handler: loads the customer; quotes the delivery (before the transaction); loads the products (tracked);
+   `Order.Place(...)` (invariants); `product.Reserve(qty)` (throws when insufficient → failure `Result`);
+   adds `OrderPlaced` to the aggregate.
+4. `SaveChangesAsync`: the interceptor writes the outbox row; the product's `xmin` detects a race →
+   `DbUpdateConcurrencyException` → the handler retries a few times, then answers `409` (the client repeats with the same key).
+5. `201 Created` with `Location`; the response is stored in the `IdempotencyRecord`.
 
-### 6.2 Pagamento (assíncrono)
-1. Worker consome `OrderPlaced` → `CreatePaymentForOrderHandler`: cria `Payment(Pending)` + `PaymentAttempt#1`, chama `IPaymentGatewayClient.CreateAsync` (idempotente por `OrderId`).
-2. Provider responde `pending/authorized`; salva; `Order → AwaitingPayment`.
-3. Webhook `payment.status_changed` → API valida assinatura, insere `WebhookEvent` (dedup), enfileira, responde `200` em < 200 ms.
-4. Worker aplica: `Payment.MarkPaid(...)`, `Order.MarkAsPaid(...)`, outbox `OrderPaid`. Falha → `Payment.Fail`, `Order.Cancel(PaymentFailed)`, estoque liberado.
-5. Reconciliação: `Pending` há > X min → `GET` no provider.
+### 6.2 Payment (asynchronous)
+1. The Worker consumes `OrderPlaced` → `CreatePaymentForOrderHandler`: creates `Payment(Pending)` + `PaymentAttempt#1`,
+   calls `IPaymentGatewayClient.CreateAsync` (idempotent per payment).
+2. The provider answers `pending/authorized`; saved; `Order → AwaitingPayment`.
+3. Webhook `payment.status_changed` → the API verifies the signature, inserts the `WebhookEvent` (dedup), enqueues it
+   and answers `200` quickly.
+4. The Worker applies it: `Payment` paid, `Order.MarkAsPaid(...)`, outbox `OrderPaid`. Failure → `Payment.Fail`,
+   `Order.Cancel(PaymentFailed)`, stock released.
+5. Reconciliation: `Pending` for more than X minutes → `GET` on the provider.
 
-### 6.3 Entrega (assíncrono + resiliente)
-1. `OrderPaid` → `RequestDeliveryHandler`: `POST delivery_quotes` (retry por matriz) → salva `DeliveryQuote` (com `expires`).
-2. `POST deliveries` com `quote_id` + `idempotency_key = order id` → salva `Delivery(Pending)`; `Order → DeliveryRequested`. `409 duplicate_delivery` → `GET` e reconcilia. `expired_quote` → recotar (máx. 2x).
-3. Webhooks `event.delivery_status` → dedup → fila → `ApplyDeliveryWebhookHandler`: aplica transição se o status for "posterior" ao atual (ordem canônica) ou registra como evento histórico fora de ordem sem regredir estado.
-4. `delivered` → `Order → Delivered`. `canceled/returned` → regras de cancelamento/estorno.
+### 6.3 Delivery (asynchronous and resilient)
+1. `OrderPaid` → `RequestDeliveryHandler`: reuses the checkout quote while valid, otherwise `POST delivery_quotes`
+   (retry matrix) → saves a `DeliveryQuote` (with `expires`).
+2. `POST deliveries` with `quote_id` + `idempotency_key` derived from the order → saves `Delivery(Pending)`;
+   `Order → DeliveryRequested`. `409 duplicate_delivery` → `GET` and adopt. `expired_quote` → requote (once).
+3. Webhooks `event.delivery_status` → dedup → queue → `ApplyDeliveryWebhookHandler`: applies the transition when the
+   status is "later" than the current one (canonical order), otherwise records the event as out of order without
+   regressing the state.
+4. `delivered` → `Order → Delivered`. `canceled/returned` → cancellation and refund rules.
 
-## 7. Decisões estruturais registradas
-ADR-001 (monólito modular), ADR-004 (outbox), ADR-005 (SQS), ADR-006 (sem repository/MediatR), ADR-007 (Minimal APIs), ADR-010 (idempotência).
-Índice completo em `DECISIONS.md` e `adr/`.
+## 7. Structural decisions on record
+ADR-001 (modular monolith), ADR-004 (outbox), ADR-005 (SQS), ADR-006 (no repository/MediatR), ADR-007 (Minimal APIs),
+ADR-010 (idempotency). Full index in `DECISIONS.md` and `adr/`.

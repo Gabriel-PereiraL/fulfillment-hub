@@ -1,29 +1,29 @@
-# ADR-003 — Providers externos simulados
+# ADR-003 — Simulated external providers
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-O produto integra com um provedor de entregas e um de pagamentos. Não há (nem deve haver) credenciais, entregas ou
-cobranças reais. Precisamos exercitar resiliência, idempotência e webhooks em cenários de falha controlados.
+## Context
+The product integrates with a delivery provider and a payment provider. There are (and must be) no real credentials,
+deliveries or charges. We need to exercise resilience, idempotency and webhooks under controlled failure scenarios.
 
-## Opções
-1. Chamar sandbox real (Uber Direct test mode) — exige conta, credenciais, termos; não controla falhas; risco de confundir portfólio com integração comercial.
-2. Mocks só em testes (sem processo real) — não exercita rede, timeouts, webhooks reais.
-3. **Simulator próprio em .NET** reproduzindo um subconjunto documentado do contrato público, com cenários configuráveis.
+## Options
+1. Call a real sandbox (Uber Direct test mode) — requires an account, credentials, terms; no control over failures; risk of confusing a portfolio with a commercial integration.
+2. Mocks in tests only (no real process) — does not exercise the network, timeouts, real webhooks.
+3. **Our own simulator in .NET** reproducing a documented subset of the public contract, with configurable scenarios.
 
-## Decisão
-Opção 3. `FulfillmentHub.ProviderSimulator` hospeda `/delivery/v1` (subconjunto da Uber Direct API: token, quote, create, get,
-cancel, erros, webhook `event.delivery_status` assinado) e `/payments/v1` (contrato próprio minimalista). Cenários via variáveis
-(`SIM_*`). Documentação obrigatória do contrato real vs. simulado em `INTEGRATIONS.md`, com fontes e datas.
+## Decision
+Option 3. `FulfillmentHub.ProviderSimulator` hosts `/delivery/v1` (a subset of the Uber Direct API: token, quote, create, get,
+cancel, errors, signed `event.delivery_status` webhook) and `/payments/v1` (our own minimal contract). Scenarios through
+variables (`SIM_*`). Mandatory documentation of the real vs. simulated contract in `INTEGRATIONS.md`, with sources and dates.
 
-## Motivo
-Controle total de falhas (latência, 429, 5xx, timeout, webhooks duplicados/fora de ordem), reprodutibilidade em testes e CI,
-zero risco legal/financeiro, e mais código .NET para demonstrar (o simulator também é backend).
+## Rationale
+Full control over failures (latency, 429, 5xx, timeouts, duplicated/out-of-order webhooks), reproducibility in tests and CI,
+zero legal/financial risk, and more .NET code to demonstrate (the simulator is backend too).
 
 ## Trade-offs
-- O simulator pode divergir do provider real; mitigação: tabela "REAL vs SIMULATOR" e contract tests contra a spec OpenAPI oficial.
-- Não prova integração comercial — e o projeto **nunca afirmará** isso.
+- The simulator may diverge from the real provider; mitigation: the "REAL vs SIMULATOR" table and contract tests against the official OpenAPI spec.
+- It does not prove a commercial integration — and the project **will never claim** that.
 
-## Consequências
-- Disclaimer fixo em README, docs e no próprio simulator: "This project does not connect to Uber infrastructure…".
-- `IDeliveryProviderClient` é a única porta; um segundo provider (BL-069) é possível sem tocar no domínio.
+## Consequences
+- Fixed disclaimer in the README, the docs and the simulator itself: "This project does not connect to Uber infrastructure…".
+- `IDeliveryProviderClient` is the single port; a second provider (BL-069) is possible without touching the domain.

@@ -1,42 +1,42 @@
 # ADR-004 — Transactional outbox
 
-**Status**: aceita · **Data**: 2026-09-18 (implementação: Fase 8)
+**Status**: accepted · **Date**: 2026-09-18 (implementation: Phase 8)
 
-## Contexto
-Após salvar um pedido, precisamos disparar efeitos fora da transação (criar pagamento, criar entrega, publicar em fila).
-Salvar no banco **e** publicar numa fila em passos separados (dual write) perde eventos se o processo cair entre os dois,
-ou publica eventos de transações que deram rollback.
+## Context
+After saving an order we need to trigger effects outside the transaction (create the payment, create the delivery, publish to a queue).
+Saving to the database **and** publishing to a queue in separate steps (dual write) loses events if the process dies between the two,
+or publishes events from transactions that were rolled back.
 
-## Opções
-1. Dual write com "melhor esforço" (publicar após `SaveChanges`) — inseguro.
-2. Two-phase commit / transações distribuídas — indisponível/complexo com SQS.
-3. **Transactional outbox**: evento gravado na mesma transação do agregado; publicador separado lê e publica.
-4. Change Data Capture (Debezium) — infraestrutura pesada demais.
+## Options
+1. Best-effort dual write (publish after `SaveChanges`) — unsafe.
+2. Two-phase commit / distributed transactions — unavailable/complex with SQS.
+3. **Transactional outbox**: the event is written in the same transaction as the aggregate; a separate publisher reads and publishes it.
+4. Change Data Capture (Debezium) — far too much infrastructure.
 
-## Decisão
-Opção 3. Agregados acumulam `IDomainEvent`; um `SaveChangesInterceptor` serializa para `outbox_messages` no mesmo commit.
-O `OutboxPublisher` (Worker) lê em lote com `FOR UPDATE SKIP LOCKED`, despacha (Fase 8: handlers in-process; Fase 9: SQS),
-marca `processed_at`; falhas → backoff exponencial com jitter, `Failed` após N (visível/reprocessável na Admin).
+## Decision
+Option 3. Aggregates accumulate `IDomainEvent`s; a `SaveChangesInterceptor` serializes them into `outbox_messages` in the same commit.
+The `OutboxPublisher` (Worker) reads in batches with `FOR UPDATE SKIP LOCKED`, dispatches (Phase 8: in-process handlers; Phase 9: SQS),
+marks `processed_at`; failures → exponential backoff with jitter, `Failed` after N (visible/requeueable in the Admin).
 
-## Motivo
-Garante at-least-once sem infraestrutura extra; é o padrão reconhecido para este problema; permite mostrar retry, DLQ lógica e observabilidade (lag).
+## Rationale
+Guarantees at-least-once without extra infrastructure; it is the recognized pattern for this problem; it lets us show retry, a logical DLQ and observability (lag).
 
-## Trade-offs / limitações
-- **At-least-once** ⇒ todo consumidor deve ser idempotente (ADR-010).
-- Consistência **eventual** entre módulos: `Order` pode ficar `Created` alguns segundos antes de `AwaitingPayment`; documentado no produto.
-- Polling do outbox adiciona latência (intervalo curto, ex. 500 ms) e carga leve no banco; aceitável.
-- Ordem: garantida apenas por agregado dentro de um lote ordenado por `occurred_at`; consumidores não devem depender de ordem global.
+## Trade-offs / limitations
+- **At-least-once** ⇒ every consumer must be idempotent (ADR-010).
+- **Eventual** consistency between modules: an `Order` may stay `Created` for a few seconds before `AwaitingPayment`; documented in the product.
+- Polling the outbox adds latency (short interval, e.g. 500 ms) and light load on the database; acceptable.
+- Ordering: guaranteed only per aggregate within a batch ordered by `occurred_at`; consumers must not depend on global order.
 
-## Consequências
-- Nenhum efeito externo é disparado dentro de um request HTTP (exceto operações explicitamente síncronas, como cotação).
-- Testes obrigatórios: perda zero com falha injetada; retry; `Failed`; reprocessamento.
+## Consequences
+- No external effect is triggered inside an HTTP request (except explicitly synchronous operations, such as the quote).
+- Mandatory tests: zero loss with an injected failure; retry; `Failed`; requeue.
 
-## Implementação (Fase 8, 2026-09-18)
+## Implementation (Phase 8, 2026-09-18)
 
-- **Captura**: `AggregateRoot<TId> : IAggregateRoot` acumula `IDomainEvent`; `OutboxInterceptor` (`SaveChangesInterceptor`, registrado no `AddDbContext`) converte os eventos dos agregados rastreados em linhas de `outbox_messages` no mesmo `SaveChanges` e limpa os eventos só depois do commit. Serialização `System.Text.Json` (`OutboxEventSerializer`: ids fortes como GUID, `Money` como `{amount, currency}`, enums como texto); `type` = nome CLR do evento, registro montado por reflexão do assembly de domínio. Colunas: `id`, `type`, `payload jsonb`, `aggregate_id`, `occurred_at`, `created_at`, `status`, `attempts`, `next_attempt_at`, `locked_until`, `processed_at`, `last_error`, `correlation_id`, `trace_parent`; índice `(status, next_attempt_at)`; `xmin`. Migration `20260918170717_OutboxMessages`.
-- **Publicação**: `OutboxProcessor` (Infrastructure) — transação curta com `SELECT …, xmin FROM outbox_messages WHERE status='Pending' AND next_attempt_at <= now AND (locked_until IS NULL OR locked_until < now) ORDER BY occurred_at LIMIT n FOR UPDATE SKIP LOCKED`, lease (`Outbox:LeaseSeconds`, 60) gravada e commit; depois cada mensagem é despachada em **escopo DI próprio** para o `IOutboxHandler` registrado por chave (`AddKeyedScoped<IOutboxHandler, T>(nameof(Evento))`), com span `Outbox <type>` ligado ao `trace_parent` da request de origem. `OutboxHandling.Done` → `Processed`; `Retry`/exceção → `attempts++`, backoff exponencial com jitter (`BaseDelaySeconds` 2, `MaxDelaySeconds` 300), `Failed` após `MaxAttempts` (5). O Worker roda `OutboxPublisherService : PeriodicJob` a cada `Worker:Outbox:IntervalMs` (500).
-- **Consumidores** (Application/Outbox/Handlers, todos idempotentes): `OrderPlaced` → `CreatePaymentForOrderHandler` (reusa pagamento ativo; chave de idempotência por pagamento); `OrderPaid` → `RequestDeliveryHandler` (entrega ativa → `AlreadyRequested`); `OrderCancelled` e `PaymentPaid` → `RefundPaymentHandler` (estorna só se o pedido está `Cancelled` e o pagamento `Paid`, chave `refund-{paymentId}`) — fecha BL-244 (captura tardia e cancelamento após pagamento). Resultado `Unavailable` → `Retry`; rejeições permanentes → `Done` (o handler já tratou o negócio).
-- **O que saiu do request**: `POST /orders` não cria mais o pagamento (responde `Created`; D-64); `PaymentStatusApplier` não chama providers. Ficou síncrono de propósito: cotação no checkout (D-51) e cancelamento da entrega no provider dentro de `POST /orders/{id}/cancel` (§6 de INTEGRATIONS).
-- **Operação**: `GET /api/v1/admin/outbox?status=Failed` e `POST /api/v1/admin/outbox/{id}/retry` (AdminOnly; `Requeue` zera tentativas). Métricas `fh.outbox.published{outcome,type}`, `fh.outbox.lag`, `fh.outbox.publish.duration`, gauges `fh.outbox.pending/failed`. Logs 7000–7002 (publisher), 7100 (requeue).
-- **Rede de segurança**: `DeliveryRequestService` (varredura de `Paid` sem entrega) e as reconciliações continuam, com intervalo maior — cobrem uma mensagem parada em `Failed` sem intervenção.
-- **Evidência**: `OutboxTests` — T12 (`OrderPlaced` gravado com o pedido, correlation id da request, publicado depois; falha na primeira publicação → `Pending` com `attempts=1` e `next_attempt_at` futuro, sucesso depois), T13 (3 falhas → `Failed`, listado no admin, requeue → processado), redelivery de mensagem processada → um único pagamento, cancelamento de pedido pago → estorno pela outbox. Smoke em Kestrel: `Created → AwaitingPayment → Paid → DeliveryRequested → InDelivery → Delivered` em 18 s só pela outbox + webhooks.
+- **Capture**: `AggregateRoot<TId> : IAggregateRoot` accumulates `IDomainEvent`s; `OutboxInterceptor` (`SaveChangesInterceptor`, registered in `AddDbContext`) converts the events of the tracked aggregates into `outbox_messages` rows in the same `SaveChanges` and clears the events only after the commit. `System.Text.Json` serialization (`OutboxEventSerializer`: strongly-typed ids as GUID, `Money` as `{amount, currency}`, enums as text); `type` = the event's CLR name, registry built by reflection over the domain assembly. Columns: `id`, `type`, `payload jsonb`, `aggregate_id`, `occurred_at`, `created_at`, `status`, `attempts`, `next_attempt_at`, `locked_until`, `processed_at`, `last_error`, `correlation_id`, `trace_parent`; index `(status, next_attempt_at)`; `xmin`. Migration `20260918170717_OutboxMessages`.
+- **Publishing**: `OutboxProcessor` (Infrastructure) — a short transaction with `SELECT …, xmin FROM outbox_messages WHERE status='Pending' AND next_attempt_at <= now AND (locked_until IS NULL OR locked_until < now) ORDER BY occurred_at LIMIT n FOR UPDATE SKIP LOCKED`, lease (`Outbox:LeaseSeconds`, 60) written and committed; then each message is dispatched in its **own DI scope** to the `IOutboxHandler` registered by key (`AddKeyedScoped<IOutboxHandler, T>(nameof(Event))`), with an `Outbox <type>` span linked to the `trace_parent` of the originating request. `OutboxHandling.Done` → `Processed`; `Retry`/exception → `attempts++`, exponential backoff with jitter (`BaseDelaySeconds` 2, `MaxDelaySeconds` 300), `Failed` after `MaxAttempts` (5). The Worker runs `OutboxPublisherService : PeriodicJob` every `Worker:Outbox:IntervalMs` (500).
+- **Consumers** (Application/Outbox/Handlers, all idempotent): `OrderPlaced` → `CreatePaymentForOrderHandler` (reuses the active payment; idempotency key per payment); `OrderPaid` → `RequestDeliveryHandler` (active delivery → `AlreadyRequested`); `OrderCancelled` and `PaymentPaid` → `RefundPaymentHandler` (refunds only if the order is `Cancelled` and the payment `Paid`, key `refund-{paymentId}`) — closes BL-244 (late capture and cancellation after payment). `Unavailable` result → `Retry`; permanent rejections → `Done` (the handler already dealt with the business side).
+- **What left the request**: `POST /orders` no longer creates the payment (answers `Created`; D-64); `PaymentStatusApplier` does not call providers. Deliberately still synchronous: the quote at checkout (D-51) and the delivery cancellation at the provider inside `POST /orders/{id}/cancel` (INTEGRATIONS §6).
+- **Operations**: `GET /api/v1/admin/outbox?status=Failed` and `POST /api/v1/admin/outbox/{id}/retry` (AdminOnly; `Requeue` resets attempts). Metrics `fh.outbox.published{outcome,type}`, `fh.outbox.lag`, `fh.outbox.publish.duration`, gauges `fh.outbox.pending/failed`. Logs 7000–7002 (publisher), 7100 (requeue).
+- **Safety net**: `DeliveryRequestService` (sweep of `Paid` orders without a delivery) and the reconciliations continue, with a longer interval — they cover a message stuck in `Failed` without intervention.
+- **Evidence**: `OutboxTests` — T12 (`OrderPlaced` written with the order, the request's correlation id, published later; failure on the first publish → `Pending` with `attempts=1` and a future `next_attempt_at`, success later), T13 (3 failures → `Failed`, listed in the admin, requeue → processed), redelivery of a processed message → a single payment, cancellation of a paid order → refund through the outbox. Kestrel smoke test: `Created → AwaitingPayment → Paid → DeliveryRequested → InDelivery → Delivered` in 18 s through the outbox + webhooks alone.

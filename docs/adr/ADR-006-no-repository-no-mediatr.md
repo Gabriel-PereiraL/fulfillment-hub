@@ -1,31 +1,31 @@
-# ADR-006 — DbContext direto via interface; sem repository/UoW genérico; sem MediatR
+# ADR-006 — DbContext through an interface; no generic repository/UoW; no MediatR
 
-**Status**: aceita · **Data**: 2026-09-18
+**Status**: accepted · **Date**: 2026-09-18
 
-## Contexto
-É comum em projetos .NET "de tutorial" empilhar `IRepository<T>`, `IUnitOfWork`, MediatR, AutoMapper e Result em todo lugar.
-Queremos código explícito, testável e idiomático, sem abstrações cerimoniais — mas mantendo o domínio livre de infraestrutura.
+## Context
+"Tutorial-style" .NET projects often stack `IRepository<T>`, `IUnitOfWork`, MediatR, AutoMapper and Result everywhere.
+We want explicit, testable, idiomatic code without ceremonial abstractions — while keeping the domain free of infrastructure.
 
-## Opções
-1. Repository genérico + UoW sobre o EF Core.
-2. Repository por agregado (DDD tático) com implementação EF.
-3. **`IFulfillmentHubDbContext`** (interface com `DbSet<T>` + `SaveChangesAsync`) usada diretamente pelos casos de uso; `Application` referencia o pacote EF Core.
-4. Casos de uso dentro de `Infrastructure` (sem camada Application).
+## Options
+1. Generic repository + UoW on top of EF Core.
+2. One repository per aggregate (tactical DDD) with an EF implementation.
+3. **`IFulfillmentHubDbContext`** (interface with `DbSet<T>` + `SaveChangesAsync`) used directly by the use cases; `Application` references the EF Core package.
+4. Use cases inside `Infrastructure` (no Application layer).
 
-## Decisão
-Opção 3 para dados. Casos de uso são classes explícitas (`PlaceOrderHandler`) registradas no DI e chamadas diretamente pelos
-endpoints — **sem MediatR/Mediator**. Interfaces existem apenas em portas externas (`IDeliveryProviderClient`,
-`IPaymentGatewayClient`, `IMessagePublisher`) e no DbContext. Um `Result` pequeno próprio para falhas esperadas; sem AutoMapper.
+## Decision
+Option 3 for data. Use cases are explicit classes (`PlaceOrderHandler`) registered in DI and called directly by the
+endpoints — **no MediatR/Mediator**. Interfaces exist only at the external ports (`IDeliveryProviderClient`,
+`IPaymentGatewayClient`, `IMessagePublisher`) and on the DbContext. A small in-house `Result` for expected failures; no AutoMapper.
 
-## Motivo
-- `DbContext` **já é** Unit of Work + Repository; envolvê-lo duplica API, esconde LINQ/Include/projeções e cria "repository anêmico".
-- MediatR virou licença comercial (2025) e, mais importante, não resolve problema real aqui: DI direto é mais rastreável.
-- Testes de casos de uso rodam contra Postgres real (Testcontainers), o que testa mais do que mocks de repository.
+## Rationale
+- The `DbContext` **already is** a Unit of Work + Repository; wrapping it duplicates the API, hides LINQ/Include/projections and creates an "anaemic repository".
+- MediatR moved to a commercial licence (2025) and, more importantly, it solves no real problem here: direct DI is more traceable.
+- Use-case tests run against a real Postgres (Testcontainers), which tests more than repository mocks.
 
 ## Trade-offs
-- `Application` depende do pacote EF Core (não do provider). Aceito e explícito; `Domain` continua puro.
-- Sem "pipeline behaviors" do MediatR: cross-cutting (logging, validação, transação) vai em endpoint filters, interceptors EF e decorators só se necessário.
+- `Application` depends on the EF Core package (not on the provider). Accepted and explicit; `Domain` stays pure.
+- No MediatR "pipeline behaviours": cross-cutting concerns (logging, validation, transaction) go into endpoint filters, EF interceptors and decorators only when needed.
 
-## Consequências
-- ArchitectureTests: `Domain` não referencia EF; `Application` não referencia `Infrastructure`.
-- Skills copiadas que sugerem repository/MediatR são explicitamente sobrepostas pela skill principal (seção 12).
+## Consequences
+- ArchitectureTests: `Domain` does not reference EF; `Application` does not reference `Infrastructure`.
+- Copied skills that suggest repository/MediatR are explicitly overridden by the main skill (section 12).

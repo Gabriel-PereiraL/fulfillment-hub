@@ -1,35 +1,35 @@
-# Documentação — FulfillmentHub
+# Documentation — FulfillmentHub
 
-Índice da documentação técnica. Comece por **PROJECT_STATE.md** (estado atual) e **PRODUCT.md** (o que é o produto).
+Index of the technical documentation. Start with **PROJECT_STATE.md** (current state) and **PRODUCT.md** (what the system is).
 
-| Documento | Conteúdo |
+| Document | Contents |
 |---|---|
-| [PROJECT_STATE.md](PROJECT_STATE.md) | **Memória operacional**: fase atual, feito, próximo passo, bloqueios, gate. Atualizado a cada sessão |
-| [PRODUCT.md](PRODUCT.md) | O que é, para que serve, atores, fluxo macro, funcionalidades, fora de escopo, requisitos não funcionais, glossário |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Monólito modular, projetos, dependências, padrões adotados/recusados, componentes transversais, fluxos críticos |
-| [DOMAIN.md](DOMAIN.md) | Módulos, agregados, entidades, value objects, máquinas de estado, invariantes, registros de infraestrutura |
-| [INTEGRATIONS.md](INTEGRATIONS.md) | Contrato real do Uber Direct (fontes/datas) vs. simulador; provider de pagamento simulado; resiliência; webhooks; fila vs. síncrono |
-| [ROADMAP.md](ROADMAP.md) | 21 fases com objetivo, tasks, critérios de aceite (gates), dependências, riscos, status |
-| [BACKLOG.md](BACKLOG.md) | Itens por categoria com prioridade P0–P3 e status |
-| [TEST_STRATEGY.md](TEST_STRATEGY.md) | Stack de testes, pirâmide, matriz de cenários obrigatórios (T1–T20), regras de qualidade |
-| [SECURITY.md](SECURITY.md) | Threat model, auth/authz, segredos, OWASP Top 10 checklist, LGPD, SAST |
-| [OBSERVABILITY.md](OBSERVABILITY.md) | Logs, métricas, traces, correlação, alertas, runbooks |
-| [AWS_ARCHITECTURE.md](AWS_ARCHITECTURE.md) | Arquitetura alvo na AWS, custos, rede, IAM, o que será aprendido operando |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Ambientes, Docker, CI, Terraform, deploy, rollback, checklist anti-vazamento |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Pré-requisitos, setup, comandos, configuração/segredos, fluxo de trabalho |
-| [DECISIONS.md](DECISIONS.md) | Registro de decisões (índice de ADRs, decisões menores, pendentes) |
+| [PROJECT_STATE.md](PROJECT_STATE.md) | **Operational memory**: current phase, what is done, next step, blockers, gate. Updated at the end of every session |
+| [PRODUCT.md](PRODUCT.md) | What it is and what it is for, actors, high-level flow, features by module, out of scope, non-functional requirements, glossary |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Modular monolith, projects, dependency rules, patterns adopted and rejected, cross-cutting components, critical flows |
+| [DOMAIN.md](DOMAIN.md) | Modules, aggregates, entities, value objects, state machines, invariants, infrastructure records |
+| [INTEGRATIONS.md](INTEGRATIONS.md) | Real Uber Direct contract (sources/dates) vs. the simulator; simulated payment provider; resilience policy; webhook ingestion; queue vs. synchronous |
+| [ROADMAP.md](ROADMAP.md) | 21 phases with objective, tasks, acceptance criteria (gates), dependencies, risks and status |
+| [BACKLOG.md](BACKLOG.md) | Items by category with priority P0–P3 and status |
+| [TEST_STRATEGY.md](TEST_STRATEGY.md) | Test stack, pyramid, mandatory scenario matrix (T1–T20), quality rules |
+| [SECURITY.md](SECURITY.md) | Threat model, authentication/authorization, secrets, OWASP Top 10 checklist, personal data, SAST |
+| [OBSERVABILITY.md](OBSERVABILITY.md) | Logs, metrics, traces, correlation, alerts, runbooks |
+| [AWS_ARCHITECTURE.md](AWS_ARCHITECTURE.md) | Target AWS architecture, cost, networking, IAM, what operating it is meant to teach |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Environments, Docker, CI, Terraform, deploy, rollback, leak-prevention checklist |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Prerequisites, setup, everyday commands, configuration and secrets, workflow |
+| [DECISIONS.md](DECISIONS.md) | Decision log (ADR index, smaller decisions, pending decisions) |
 | [adr/](adr/) | ADR-001 … ADR-013 |
 
-## Invariantes do projeto
+## Project invariants
 
-1. C#/.NET é a stack principal. 2. Backend é o foco. 3. Sem microserviços por estética. 4. Sem Kubernetes. 5. Sem complexidade sem necessidade.
-6. Integrações externas são simuladas. 7. Isso é sempre explícito. 8. Nenhuma chamada comercial/real sem autorização. 9. Nenhum secret em código.
-10. Nenhum push sem autorização explícita. 11. Publicado no GitHub a partir da Fase 9 (histórico preservado). 12. Skills e memória da IA nunca entram no repositório público.
-13. Documentação antes da implementação. 14. PROJECT_STATE sempre atualizado. 15. Todo dia há um próximo passo claro.
-16. Testes validam comportamento. 17. Segurança e observabilidade são requisitos, não pós-projeto. 18. AWS é aprendida operando.
-19. O projeto permanece executável durante a evolução. 20. Não mentir no portfólio.
+1. C#/.NET is the stack. 2. The backend is the focus. 3. No microservices for their own sake. 4. No Kubernetes. 5. No complexity without a need.
+6. External integrations are simulated. 7. That is always stated explicitly. 8. No real or commercial calls without authorization. 9. No secrets in code.
+10. No push without explicit authorization. 11. Published on GitHub since Phase 9, with the full history preserved. 12. AI skills and memory never enter the public repository.
+13. Documentation before implementation. 14. PROJECT_STATE is always up to date. 15. There is always a clear next step.
+16. Tests validate behaviour. 17. Security and observability are requirements, not afterthoughts. 18. AWS is learned by operating it.
+19. The project stays runnable while it evolves. 20. The portfolio never lies.
 
-## Aviso
+## Notice
 
 This project does not connect to Uber infrastructure or to any real payment provider. The simulators reproduce a limited subset of
 public API contracts for educational and portfolio purposes only.

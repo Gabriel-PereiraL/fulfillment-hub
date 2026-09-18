@@ -1,32 +1,32 @@
 # ADR-011 — AWS: ECS Fargate + ALB + RDS + SQS + Secrets Manager + CloudWatch, via Terraform
 
-**Status**: aceita · **Data**: 2026-09-18 (implementação: Fases 15–16, mediante autorização de custo)
+**Status**: accepted · **Date**: 2026-09-18 (implementation: Phases 15–16, subject to cost authorization)
 
-## Contexto
-O feedback do processo seletivo pediu profundidade em ECS, RDS, IAM, VPC e IaC. O projeto precisa de um ambiente de nuvem
-real para aprender operando, com custo controlado e sem produção comercial.
+## Context
+Feedback from a hiring process asked for depth in ECS, RDS, IAM, VPC and IaC. The project needs a real cloud environment
+to learn by operating it, with controlled cost and no commercial production.
 
-## Opções
-- Compute: **ECS Fargate** vs. ECS EC2 vs. EKS vs. App Runner vs. Lambda.
-- Banco: **RDS PostgreSQL** vs. Aurora Serverless v2 vs. Postgres em container.
+## Options
+- Compute: **ECS Fargate** vs. ECS on EC2 vs. EKS vs. App Runner vs. Lambda.
+- Database: **RDS PostgreSQL** vs. Aurora Serverless v2 vs. Postgres in a container.
 - IaC: **Terraform** vs. CDK (C#) vs. CloudFormation/SAM.
-- Rede: privada + NAT vs. privada + VPC endpoints vs. pública com SG (D-P6).
+- Network: private + NAT vs. private + VPC endpoints vs. public with SG (D-P6).
 
-## Decisão
-ECS Fargate (Api, Worker, Simulator como serviços), ALB, RDS PostgreSQL `db.t4g.micro` (single-AZ em dev), SQS + DLQ,
-Secrets Manager (+ Parameter Store para config), CloudWatch (logs/métricas/alarmes) + X-Ray via ADOT, ECR, IAM task roles por serviço,
-AWS Budgets. Terraform com módulos (`network`, `ecs-service`, `rds`, `sqs`, `secrets`, `observability`, `iam`) e ambiente `envs/dev`.
+## Decision
+ECS Fargate (Api, Worker, Simulator as services), ALB, RDS PostgreSQL `db.t4g.micro` (single-AZ in dev), SQS + DLQ,
+Secrets Manager (+ Parameter Store for config), CloudWatch (logs/metrics/alarms) + X-Ray via ADOT, ECR, IAM task roles per service,
+AWS Budgets. Terraform with modules (`network`, `ecs-service`, `rds`, `sqs`, `secrets`, `observability`, `iam`) and an `envs/dev` environment.
 
-## Motivo
-- Fargate: sem gerenciar hosts; é o serviço pedido; mapeia 1:1 com os processos do monólito.
-- Terraform: padrão de mercado e pedido explicitamente (CDK em C# seria coerente com a stack, mas Terraform tem mais alcance em vagas).
-- RDS: gerenciado; Aurora Serverless é mais caro no mínimo; container não ensina RDS.
+## Rationale
+- Fargate: no hosts to manage; it is the requested service; maps 1:1 to the monolith's processes.
+- Terraform: the market standard and explicitly requested (CDK in C# would be coherent with the stack, but Terraform has more reach in job postings).
+- RDS: managed; Aurora Serverless is more expensive at the minimum; a container does not teach RDS.
 
 ## Trade-offs
-- Custo (~US$ 65–80/mês ligado; ~US$ 3 desligado): mitigado com `destroy` após cada sessão e budget alarm.
-- Single-AZ/RDS pequeno em dev: não é "production-like" e o README dirá isso.
-- Rede: decisão D-P6 pendente (subnets públicas em dev vs. endpoints) — a opção escolhida será documentada com custo real.
+- Cost (~US$ 65–80/month running; ~US$ 3 stopped): mitigated with `destroy` after every session and a budget alarm.
+- Single-AZ/small RDS in dev: not "production-like" and the README will say so.
+- Network: decision D-P6 pending (public subnets in dev vs. endpoints) — the chosen option will be documented with the real cost.
 
-## Consequências
-- AWS_ARCHITECTURE.md e DEPLOYMENT.md descrevem o alvo; nada é criado sem autorização explícita do usuário.
-- Aprendizados reais (permissões IAM que falharam, custos observados) serão registrados na Fase 16.
+## Consequences
+- AWS_ARCHITECTURE.md and DEPLOYMENT.md describe the target; nothing is created without the user's explicit authorization.
+- Real lessons (IAM permissions that failed, observed costs) will be recorded in Phase 16.
