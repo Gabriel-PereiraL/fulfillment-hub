@@ -1,4 +1,7 @@
+using FulfillmentHub.Application;
+using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Providers.Payments;
 using FulfillmentHub.Infrastructure.Telemetry;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -13,6 +16,14 @@ public static class WorkerHostBuilderExtensions
     {
         builder.AddFulfillmentHubTelemetry("fulfillmenthub-worker");
         builder.Services.AddFulfillmentHubPersistence();
+        builder.Services.AddFulfillmentHubPaymentProvider();
+        builder.Services.AddFulfillmentHubApplication();
+        builder.Services.AddScoped<ICurrentUser, AnonymousCurrentUser>();
+
+        builder.Services.AddOptions<ReconciliationOptions>()
+            .BindConfiguration(ReconciliationOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         builder.Services.AddOptions<WorkerOptions>()
             .BindConfiguration(WorkerOptions.SectionName)
@@ -22,6 +33,7 @@ public static class WorkerHostBuilderExtensions
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<WorkerMetrics>();
         builder.Services.AddHostedService<HeartbeatService>();
+        builder.Services.AddHostedService<PaymentReconciliationService>();
 
         return builder;
     }

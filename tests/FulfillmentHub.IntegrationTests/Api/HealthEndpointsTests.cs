@@ -58,6 +58,9 @@ public sealed class HealthEndpointsTests(ApiFixture api)
                     ["Jwt:Issuer"] = ApiFixture.JwtIssuer,
                     ["Jwt:Audience"] = ApiFixture.JwtAudience,
                     ["Jwt:SigningKey"] = ApiFixture.JwtSigningKey,
+                    ["Providers:Payment:BaseUrl"] = "http://provider.test",
+                    ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
+                    ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
                 }));
         }
     }

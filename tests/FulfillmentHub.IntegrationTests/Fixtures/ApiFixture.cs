@@ -2,12 +2,16 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FulfillmentHub.Application.Identity;
+using FulfillmentHub.Application.Payments;
 using FulfillmentHub.Domain.Common;
 using FulfillmentHub.Domain.Customers;
 using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Providers.Payments;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -17,7 +21,8 @@ using Testcontainers.PostgreSql;
 namespace FulfillmentHub.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Hosts the API in-process against a real PostgreSQL container with migrations applied.
+/// Hosts the API in-process against a real PostgreSQL container with migrations applied, plus the provider simulator
+/// (<see cref="ProviderSimulatorFactory"/>) reachable through the API's payment <c>HttpClient</c>.
 /// Shared by every test in the <see cref="ApiTests"/> collection (one container per test run).
 /// </summary>
 public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
@@ -28,8 +33,20 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public const string JwtSigningKey = "integration-tests-signing-key-with-at-least-32-bytes";
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    private readonly ProviderSimulatorFactory _simulator;
+    private readonly ProviderOutage _providerOutage = new();
+
+    public ApiFixture()
+    {
+        _simulator = new ProviderSimulatorFactory(() => Server);
+    }
 
     public string ConnectionString => _postgres.GetConnectionString();
+
+    public ProviderSimulatorFactory Simulator => _simulator;
+
+    /// <summary>Flip <see cref="ProviderOutage.Enabled"/> to make the provider answer 503 to the API.</summary>
+    public ProviderOutage ProviderOutage => _providerOutage;
 
     public async ValueTask InitializeAsync()
     {
@@ -42,6 +59,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
     public override async ValueTask DisposeAsync()
     {
+        await _simulator.DisposeAsync();
         await base.DisposeAsync();
         await _postgres.DisposeAsync();
     }
@@ -106,9 +124,22 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Jwt:Issuer"] = JwtIssuer,
                 ["Jwt:Audience"] = JwtAudience,
                 ["Jwt:SigningKey"] = JwtSigningKey,
+                ["Providers:Payment:BaseUrl"] = "http://provider.test",
+                ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
+                ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
+                ["Providers:Payment:RetryBaseDelayMs"] = "10",
             }));
         builder.ConfigureTestServices(services =>
-            services.AddSingleton<IStartupFilter, TestClientAddressMiddleware.StartupFilter>());
+        {
+            services.AddSingleton<IStartupFilter, TestClientAddressMiddleware.StartupFilter>();
+
+            // Same as the Development default: unreadable bodies throw and must be turned into 400 by our exception handler.
+            services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+
+            // The API reaches the simulator hosted in-process: the full HTTP pipeline of both hosts runs, without sockets.
+            services.AddHttpClient<IPaymentGatewayClient, SimulatedPaymentGatewayClient>()
+                .ConfigurePrimaryHttpMessageHandler(() => new ProviderOutage.Handler(_providerOutage) { InnerHandler = _simulator.Server.CreateHandler() });
+        });
     }
 
     private static string RandomLoopbackAddress()

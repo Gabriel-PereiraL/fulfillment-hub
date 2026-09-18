@@ -3,9 +3,11 @@ using FulfillmentHub.Api.ErrorHandling;
 using FulfillmentHub.Api.Identity;
 using FulfillmentHub.Api.Middleware;
 using FulfillmentHub.Api.Orders;
+using FulfillmentHub.Api.Webhooks;
 using FulfillmentHub.Application;
 using FulfillmentHub.Infrastructure.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Providers.Payments;
 using FulfillmentHub.Infrastructure.Seeding;
 using FulfillmentHub.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -23,7 +25,9 @@ builder.AddFulfillmentHubTelemetry("fulfillmenthub-api")
 
 builder.Services.AddFulfillmentHubPersistence();
 builder.Services.AddFulfillmentHubIdentity();
+builder.Services.AddFulfillmentHubPaymentProvider();
 builder.Services.AddFulfillmentHubApplication();
+builder.Services.AddFulfillmentHubIdentityApplication();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
 builder.Services.AddFulfillmentHubApiSecurity();
@@ -75,6 +79,7 @@ app.MapAuthEndpoints();
 app.MapUsersEndpoints();
 app.MapProductsEndpoints();
 app.MapOrdersEndpoints();
+app.MapPaymentWebhooksEndpoints();
 
 app.Run();
 

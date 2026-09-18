@@ -129,7 +129,7 @@ public sealed class OrderAccessAndCancelTests(ApiFixture api)
         return (await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken))!;
     }
 
-    /// <summary>Simulates payment and pickup (later phases drive this through providers).</summary>
+    /// <summary>Simulates pickup (Phase 6 drives this through the delivery provider). Payment is driven by the simulator.</summary>
     private async Task DriveToInDeliveryAsync(Guid orderId)
     {
         using var scope = api.Services.CreateScope();
@@ -137,9 +137,16 @@ public sealed class OrderAccessAndCancelTests(ApiFixture api)
         var id = OrderId.From(orderId);
         var order = await db.Orders.SingleAsync(o => o.Id == id);
         var now = DateTimeOffset.UtcNow;
-        var paymentId = PaymentId.New();
-        order.MarkAwaitingPayment(paymentId, now);
-        order.MarkAsPaid(paymentId, now);
+        var paymentId = order.PaymentId ?? PaymentId.New();
+        if (order.Status == OrderStatus.Created)
+        {
+            order.MarkAwaitingPayment(paymentId, now);
+        }
+
+        if (order.Status == OrderStatus.AwaitingPayment)
+        {
+            order.MarkAsPaid(paymentId, now);
+        }
         order.MarkDeliveryRequested(DeliveryId.New(), FulfillmentHub.Domain.Common.Money.Of(5m), now);
         order.MarkInDelivery(now);
         await db.SaveChangesAsync();

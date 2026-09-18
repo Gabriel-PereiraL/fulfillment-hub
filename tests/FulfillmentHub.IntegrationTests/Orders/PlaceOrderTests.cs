@@ -24,7 +24,8 @@ public sealed class PlaceOrderTests(ApiFixture api)
         order.ShouldNotBeNull();
         response.Headers.Location!.ToString().ShouldEndWith($"/api/v1/orders/{order.Id}");
         order.Number.ShouldBeGreaterThanOrEqualTo(1000);
-        order.Status.ShouldBe("Created");
+        order.Status.ShouldBe("AwaitingPayment", "the payment is initiated with the simulated provider right after the order is committed");
+        order.PaymentId.ShouldNotBeNull();
         order.Subtotal.Amount.ShouldBe(39.8m);
         order.Total.Amount.ShouldBe(39.8m);
         order.DeliveryFee.ShouldBeNull();
@@ -34,6 +35,20 @@ public sealed class PlaceOrderTests(ApiFixture api)
 
         var fetched = await client.GetFromJsonAsync<OrderDto>($"/api/v1/orders/{order.Id}", TestContext.Current.CancellationToken);
         fetched.ShouldNotBeNull().Id.ShouldBe(order.Id);
+    }
+
+    [Fact]
+    public async Task PlaceOrder_WithUnreadableBody_Returns400Problem_NotA500()
+    {
+        using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
+        var body = new { items = new[] { new { productId = "not-a-guid", quantity = 1 } }, deliveryAddress = new { street = "Rua A" } };
+
+        var response = await PlaceOrderAsync(client, body, Guid.NewGuid().ToString());
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(TestContext.Current.CancellationToken);
+        problem!.Title.ShouldBe("Malformed request");
+        problem.Detail!.Contains("Exception", StringComparison.Ordinal).ShouldBeFalse("internals never leak to clients");
     }
 
     [Fact]
@@ -157,7 +172,7 @@ public sealed class PlaceOrderTests(ApiFixture api)
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var order = await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken);
-        order!.Status.ShouldBe("Created");
+        order!.Status.ShouldBe("AwaitingPayment");
         order.Total.Amount.ShouldBe(10m);
         order.CustomerId.ShouldNotBe((Guid)body.customerId);
     }

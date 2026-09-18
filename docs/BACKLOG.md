@@ -30,7 +30,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-024 | `POST /orders` com filtro `Idempotency-Key` + `IdempotencyRecord` | 4 | P0 | done |
 | BL-025 | `GET /orders/{id}`, `GET /orders` (keyset pagination), autorização por recurso (cliente só vê os seus) | 4 | P0 | done |
 | BL-026 | `POST /orders/{id}/cancel` | 4 | P0 | done |
-| BL-027 | `POST /webhooks/payments` (assinatura, dedup, 200 rápido) | 5 | P0 | todo |
+| BL-027 | `POST /webhooks/payments` (assinatura, dedup, 200 rápido) | 5 | P0 | done |
 | BL-028 | `POST /webhooks/deliveries` | 7 | P0 | todo |
 | BL-029 | Endpoints de catálogo: `GET /products` (**done**, Fase 4); CRUD admin de produtos pendente | 4/17 | P1 | doing |
 | BL-030 | Endpoints de operação: reprocessar outbox/webhook, reconciliar, cancelar entrega | 8–9 | P1 | todo |
@@ -56,14 +56,16 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-060 | Simulator de pagamento `/payments/v1` (contrato INTEGRATIONS §3, cenários, webhooks assinados) | 5 | P0 | todo |
-| BL-061 | `IPaymentGatewayClient` typed client + resiliência + idempotência | 5 | P0 | todo |
+| BL-060 | Simulator de pagamento `/payments/v1` (contrato INTEGRATIONS §3, cenários, webhooks assinados) | 5 | P0 | done |
+| BL-061 | `IPaymentGatewayClient` typed client + resiliência + idempotência | 5 | P0 | done |
 | BL-062 | Simulator de entrega `/delivery/v1` (token, quote, create, get, cancel, erros, ciclo de vida, webhooks) | 6 | P0 | todo |
 | BL-063 | `IDeliveryProviderClient` + pipeline (timeout/retry/CB) + matriz de retry testada | 6 | P0 | todo |
 | BL-064 | Recotação em `expired_quote`; reconciliação em `409 duplicate_delivery` | 6 | P0 | todo |
 | BL-065 | Cenários do simulator: latência, failure rate, timeout, 429+Retry-After, 503 couriers_busy, webhook duplicado/atrasado/fora de ordem, `SIM_FORCE_STATUS` | 6–7 | P0 | todo |
 | BL-066 | Rota admin do simulator (`POST /admin/scenario`) | 7 | P1 | todo |
-| BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | todo |
+| BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | parcial (pagamentos ✔ Fase 5: `PaymentReconciliationService`; entregas Fase 8) |
+| BL-244 | Estorno automático quando o provider captura após o cliente cancelar (`paid_after_cancellation`) — hoje só log 5002 + métrica | 8 | P1 | todo |
+| BL-245 | Simulator: `WebhookFailFirstN` (força retry de entrega de webhook) e cenário de webhook fora de ordem | 7 | P2 | todo |
 | BL-068 | Contract tests: schemas do simulator vs. DTOs do cliente | 12 | P1 | todo |
 | BL-069 | Segundo provider de entrega (`AlternativeProvider`) para demonstrar substituição | 18+ | P3 | todo |
 | BL-070 | Cache/renovação de token OAuth-like do simulator (401 → renovar 1x) | 6 | P1 | todo |
@@ -91,7 +93,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-101 | JWT (HS256, chave ≥ 32 bytes via secrets, exp curta), `FallbackPolicy` autenticado, policies por papel | 3 | P0 | done |
 | BL-102 | `PasswordHasher<T>` (PBKDF2) e política mínima de senha | 3 | P0 | done |
 | BL-103 | Rate limiting: login (**done**, Fase 3), webhooks e `POST /orders` (Fase 10) | 3/10 | P0 | doing |
-| BL-104 | Assinatura HMAC de webhooks (tempo constante) + tolerância de timestamp + limite de corpo | 5/7 | P0 | todo |
+| BL-104 | Assinatura HMAC de webhooks (tempo constante) + tolerância de timestamp + limite de corpo | 5/7 | P0 | done (pagamento; entrega reutiliza na Fase 7) |
 | BL-105 | Autorização por recurso (cliente só acessa os próprios pedidos) + testes de broken access control | 4/10 | P0 | done |
 | BL-106 | Security headers, CORS explícito, HTTPS redirection/HSTS (fora do dev) | 10 | P0 | todo |
 | BL-107 | Threat model revisado com evidências; checklist OWASP Top 10 preenchido | 10 | P0 | todo |
@@ -106,7 +108,8 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 |---|---|---|---|---|
 | BL-120 | Logging JSON estruturado + `LoggerMessage` source generator + scopes com correlation id | 1 | P0 | done |
 | BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → Aspire Dashboard | 1 | P0 | done |
-| BL-122 | `ActivitySource`/`Meter` do projeto; spans de casos de uso, provider calls, outbox, consumers | 5–11 | P0 | todo |
+| BL-122 | `ActivitySource`/`Meter` do projeto; spans de casos de uso, provider calls, outbox, consumers | 5–11 | P0 | parcial (meter `FulfillmentHub` ✔; spans `Provider *Payment` ✔ Fase 5; outbox/consumers Fases 8/9) |
+| BL-246 | Métricas dedicadas de retry/circuito do provider (`fh.provider.retry.count`, `fh.provider.circuit.state`) — hoje só instrumentação padrão de `HttpClient` | 11 | P2 | todo |
 | BL-123 | Métricas de negócio/operação (OBSERVABILITY.md tabela) | 11 | P0 | todo |
 | BL-124 | Instrumentação AWS SDK (SQS) | 9 | P1 | todo |
 | BL-125 | Runbook de incidente executado localmente com evidências | 11 | P0 | todo |
@@ -121,8 +124,8 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-141 | ArchitectureTests (NetArchTest): dependências, convenções (`sealed`, sufixos) | 1 | P0 | done |
 | BL-142 | Idempotência de `POST /orders` (3 cenários) | 4 | P0 | done |
 | BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | done |
-| BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | todo |
-| BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 6 | P0 | todo |
+| BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | parcial (duplicado ✔ T6; atrasado/fora de ordem Fase 7) |
+| BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 5/6 | P0 | parcial (retry ✔ T9, abre ✔ T10; half-open Fase 6) |
 | BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | todo |
 | BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |
 | BL-148 | E2E com compose: 3 fluxos | 12 | P0 | todo |

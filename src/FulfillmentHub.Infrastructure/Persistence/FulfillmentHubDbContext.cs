@@ -7,6 +7,7 @@ using FulfillmentHub.Domain.Orders;
 using FulfillmentHub.Domain.Payments;
 using FulfillmentHub.Infrastructure.Idempotency;
 using FulfillmentHub.Infrastructure.Persistence.Conventions;
+using FulfillmentHub.Infrastructure.Webhooks;
 using Microsoft.EntityFrameworkCore;
 
 namespace FulfillmentHub.Infrastructure.Persistence;
@@ -32,6 +33,9 @@ public sealed class FulfillmentHubDbContext(DbContextOptions<FulfillmentHubDbCon
 
     /// <summary>Infrastructure record (ADR-010); not part of <see cref="IFulfillmentHubDbContext"/>.</summary>
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+
+    /// <summary>Infrastructure record (webhook inbox); not part of <see cref="IFulfillmentHubDbContext"/>.</summary>
+    public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

@@ -25,6 +25,17 @@ public static class ApiSecurityServiceCollectionExtensions
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
             // Credential stuffing / brute force (OWASP A07): a handful of attempts per client IP per minute.
+            // Webhooks: generous per-client budget; providers retry with backoff on 429.
+            options.AddPolicy(Webhooks.PaymentWebhooksEndpoints.RateLimitPolicy, httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 120,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }));
+
             options.AddPolicy(AuthEndpoints.LoginRateLimitPolicy, httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",

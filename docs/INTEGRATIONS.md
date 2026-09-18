@@ -1,3 +1,5 @@
+**Implementação (Fase 5, pagamento)**: `AddFulfillmentHubPaymentProvider()` — typed client `IPaymentGatewayClient` com `Microsoft.Extensions.Http.Resilience` (`AddResilienceHandler("payment-provider")`): timeout total (`Providers:Payment:TotalTimeoutSeconds`, 15) → retry (`MaxRetryAttempts` 3, base `RetryBaseDelayMs` 500, exponencial + jitter, honra `Retry-After`; predicado exatamente o da tabela; `0` desliga o retry) → circuit breaker (50 % / 30 s / mín. 10 / aberto 30 s) → timeout por tentativa (`AttemptTimeoutSeconds`, 5). `HttpClient.Timeout` fica infinito: os timeouts pertencem à pipeline. O `Idempotency-Key` enviado é `Payment.ProviderIdempotencyKey` (estável por pagamento, então retries e a reconciliação nunca criam um segundo pagamento no provider). Falhas de transporte/timeout/circuito aberto viram `Failure.Unavailable("provider.unavailable")`; 4xx de contrato viram `Validation/Forbidden/NotFound/Conflict` e **não** são repetidos. Token: não se aplica (API key estática). Telemetria: spans `Provider CreatePayment/GetPayment/RefundPayment` + instrumentação padrão de `HttpClient` (duração/status por tentativa); métricas dedicadas de retry/circuito ficaram para a Fase 11 (BL-246). Evidência: `PaymentGatewayClientTests` (T9/T10).
+
 # INTEGRATIONS — providers externos (simulados)
 
 > **This project does not connect to Uber infrastructure or to any real payment provider.**
@@ -94,6 +96,8 @@ Cada transição gera um webhook. O simulator persiste estado em memória (ou SQ
 
 ### 2.3 Configuração de cenários (variáveis de ambiente / `appsettings`)
 
+> Desenho original da Fase 0. A implementação (Fase 5) usa seções de configuração .NET em vez de variáveis `SIM_*`: o caos genérico ficou em `Simulator:Chaos:*` e o pagamento em `Simulator:Payments:*` (ver §3). As chaves de entrega serão definidas na Fase 6 seguindo o mesmo padrão (`Simulator:Delivery:*`).
+
 | Variável | Efeito | Default |
 |---|---|---|
 | `SIM_LATENCY_MS` / `SIM_LATENCY_JITTER_MS` | latência artificial base/jitter em todas as rotas | 50 / 50 |
@@ -113,19 +117,37 @@ Cada transição gera um webhook. O simulator persiste estado em memória (ou SQ
 
 Rota administrativa do simulator (`POST /admin/scenario`) permite mudar o cenário em tempo de execução (testes E2E e demonstrações).
 
-## 3. Provider de pagamento simulado (rotas `/payments/v1/...`)
+## 3. Provider de pagamento simulado (rotas `/payments/v1/...`) — IMPLEMENTADO (Fase 5, 2026-09-18)
 
-Contrato **próprio e minimalista**, inspirado no ciclo de vida comum de PSPs (intent → autorização → captura → estorno) — **não** modela nenhum PSP específico.
+Contrato **próprio e minimalista**, inspirado no ciclo de vida comum de PSPs (intent → autorização → captura → estorno) — **não** modela nenhum PSP específico. Autenticação: `Authorization: Bearer <api key>` (`Simulator:Payments:ApiKey`); JSON em `snake_case`.
 
 | Operação | Método/path | Request | Response |
 |---|---|---|---|
-| Criar pagamento | `POST /payments/v1/payments` (header `Idempotency-Key`) | `amount` (centavos), `currency`, `order_reference`, `customer_reference`, `capture` (bool, default true), `scenario?` (só dev) | `id` (`pay_…`), `status` (`pending`/`authorized`/`paid`/`failed`), `created_at` |
-| Consultar | `GET /payments/v1/payments/{id}` | — | idem + `updated_at`, `failure_code?` |
-| Estornar | `POST /payments/v1/payments/{id}/refunds` (idempotente por `Idempotency-Key`) | `amount?` | `refund_id`, `status` |
-| Webhook | `POST <nossa url>/webhooks/payments` | `{ "id": "evt_…", "type": "payment.status_changed", "created_at", "data": { "payment_id", "status", "failure_code"?, "order_reference" } }`, header `X-Signature` = HMAC-SHA256 hex(corpo, signing key), `X-Timestamp` | esperado `200` |
-| Erros | `400 invalid_request`, `401 unauthorized`, `404 not_found`, `409 idempotency_conflict`, `422 card_declined` (falha permanente), `429`, `500`, `503` | | |
+| Criar pagamento | `POST /payments/v1/payments` (header `Idempotency-Key` **obrigatório** → `400 invalid_request` sem ele) | `amount` (centavos), `currency`, `order_reference`, `customer_reference`, `capture` (bool, default true), `scenario?` (`approve`/`decline`/`silent_approve`, só para testes manuais) | `201` `{ id: "pay_…", status: "pending", amount, currency, order_reference, failure_code, created_at, updated_at }`; mesma chave + mesmo corpo → `200` com o mesmo pagamento; mesma chave + corpo diferente → `409 idempotency_conflict` |
+| Consultar | `GET /payments/v1/payments/{id}` | — | idem, `status` ∈ `pending/authorized/paid/failed/refunded`, `failure_code?` |
+| Estornar | `POST /payments/v1/payments/{id}/refunds` | `amount?` (centavos; default = saldo) | `{ id: "ref_…", payment_id, status: "succeeded", amount, created_at }`; pagamento não `paid` → `422 not_refundable` |
+| Webhook | `POST <Simulator:Payments:WebhookUrl>` | `{ "id": "evt_…", "type": "payment.status_changed", "created_at", "data": { "payment_id", "status", "failure_code"?, "order_reference", "occurred_at" } }`; headers `X-Signature` = HMAC-SHA256 hex(corpo bruto, `WebhookSigningKey`), `X-Timestamp` (unix s), `X-Event-Id` | esperado `2xx`; senão retry em 1 s / 2 s / 4 s e descarte (logado) |
+| Erros | `{ code, message, kind: "error" }` — `400 invalid_request`, `401 unauthorized`, `404 not_found`, `409 idempotency_conflict`, `422 not_refundable`, `429 rate_limited` (+ `Retry-After`), `500 internal_server_error` (caos) | | |
 
-Cenários: `SIM_PAYMENT_APPROVAL_RATE`, `SIM_PAYMENT_SETTLE_MS`, `SIM_PAYMENT_DECLINE_CODES`, mais as variáveis genéricas de latência/falha/webhook acima.
+**Liquidação**: todo pagamento nasce `pending` e, após `SettleDelayMs`, vira `paid` ou `failed` (`failure_code = DeclineCode`, default `card_declined`) e dispara o webhook.
+
+**Regras de sandbox por valor** (como os "valores mágicos" de PSPs reais; `PaymentSimulatorStore.ScenarioFromAmount`): centavos terminados em **99** → recusado; terminados em **98** → aprovado **sem webhook** (simula webhook perdido — a reconciliação precisa perceber); qualquer outro → segue `ApprovalRate`. Um `scenario` explícito no request tem precedência.
+
+**Configuração** (seção `Simulator:Payments`, `appsettings` / variáveis `Simulator__Payments__*`):
+
+| Chave | Efeito | Default |
+|---|---|---|
+| `ApiKey` | chave esperada no `Authorization: Bearer` | vazio (obrigatória; `appsettings.Development.json` traz um valor **dev-only**) |
+| `WebhookSigningKey` | chave HMAC dos webhooks (≥ 16 chars) | vazio (obrigatória; valor dev-only em Development) |
+| `WebhookUrl` | destino dos webhooks; vazio = não envia | `http://localhost:5000/api/v1/webhooks/payments` em Development |
+| `SettleDelayMs` | tempo até `paid`/`failed` | 2000 |
+| `ApprovalRate` | fração aprovada (0–1) fora das regras por valor | 1 |
+| `DeclineCode` | `failure_code` das recusas | `card_declined` |
+| `WebhookDuplicateRate` | fração de webhooks enviados 2× | 0 |
+| `WebhookDelayMs` | atraso antes do envio | 0 |
+| `IdempotencyTtlMinutes` | TTL da `Idempotency-Key` | 60 |
+
+Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulator): `LatencyMs`, `LatencyJitterMs`, `FailureRate` (500 aleatório), `TimeoutRate` (request "some"), `RateLimitPerMinute` (0 = desligado). Estado em memória (D-P8 resolvida); reiniciar limpa tudo.
 
 ## 4. Política de resiliência das chamadas de saída
 
@@ -148,6 +170,8 @@ Cenários: `SIM_PAYMENT_APPROVAL_RATE`, `SIM_PAYMENT_SETTLE_MS`, `SIM_PAYMENT_DE
    Fase 9: publicar em `fh-webhooks-inbound` (SQS) e responder `200`.
 4. Worker aplica ao agregado com as regras de ordem (DOMAIN.md §7); marca `processed_at`; falha → `attempts++`, backoff; N falhas → `Failed` (Admin).
 5. Endpoint de webhook: sem autenticação JWT (usa assinatura), rate limit próprio, tamanho máximo de corpo (64 KB), sem logar corpo completo (apenas ids/status).
+
+**Implementação (Fase 5, `POST /api/v1/webhooks/payments`)**: passos 1, 2 e 5 como descritos (`WebhookSignatureVerifier`: `CryptographicOperations.FixedTimeEquals`, tolerância `Providers:Payment:WebhookTimestampToleranceSeconds` = 300; `WebhookInbox` grava em escopo próprio antes de processar; rate limit `webhooks` 120/min por IP; corpo > 64 KB → 413). Passo 3: processamento in-process no mesmo request (`ApplyPaymentWebhookHandler`); o `200` é devolvido mesmo se o processamento falhar — o evento fica `Failed` com `last_error` e a **reconciliação** (Worker) corrige o estado consultando o provider. Eventos de tipo desconhecido ou pagamento desconhecido → `Ignored`. **D-P5 resolvida = sim**: `paid`/`refunded` são confirmados com `GET` no provider antes de serem aplicados; o status que vale é o do provider, não o do corpo do webhook (`Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted`). A varredura de `status=Received/Failed` pelo worker (passo 4) fica para a Fase 8, junto com a outbox.
 
 ## 6. Quando usar fila vs. chamada síncrona (trade-off documentado)
 

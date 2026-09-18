@@ -26,7 +26,7 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 ### Ameaças priorizadas (STRIDE resumido)
 | Ameaça | Categoria | Mitigação planejada | Evidência (fase) |
 |---|---|---|---|
-| Webhook forjado confirma pagamento | Spoofing/Tampering | HMAC-SHA256 com chave por provider, comparação em tempo constante, tolerância de timestamp (5 min), dedup por event id, **e** estado verificado por reconciliação (`GET` no provider) antes de ações irreversíveis de alto valor (decisão: reconciliar sempre que webhook mudar para `paid`? — ver D-P5) | 5/7/10 |
+| Webhook forjado confirma pagamento | Spoofing/Tampering | HMAC-SHA256 com chave por provider, comparação em tempo constante, tolerância de timestamp (5 min), dedup por event id, **e** `paid`/`refunded` confirmados com `GET` no provider antes de aplicar (D-P5 = sim, **implementado na Fase 5**, ver §2b) | 5 ✔ /7/10 |
 | Cliente lê/cancela pedido de outro | Elevation/Information disclosure | autorização por recurso no caso de uso (`order.CustomerId == principal.CustomerId`), 404 em vez de 403 para não revelar existência; testes T16 | **4 ✔** (`OrderQueries.Visible()`, `CancelOrderHandler`; `Customer_CannotSeeOrCancel_AnotherCustomersOrder`) |
 | Credential stuffing no login | Spoofing/DoS | rate limit por IP+conta, hash PBKDF2 (`PasswordHasher`), mensagens genéricas, lockout progressivo (P2) | **3 ✔** (rate limit por IP, PBKDF2, 401 idêntico + decoy; lockout por conta pendente) |
 | Token JWT roubado | Spoofing | expiração curta (15 min), `aud`/`iss` validados, HTTPS obrigatório fora de dev, sem token em logs/URLs; refresh token com rotação (P2) | **3 ✔** (exp 15 min, iss/aud/alg validados, sem token em logs; HTTPS/HSTS na Fase 10) |
@@ -72,6 +72,20 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 - **Autorização**: `FallbackPolicy` = usuário autenticado (negar por padrão). Policies: `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`. Autorização **por recurso** dentro do caso de uso (o principal é passado como `ICurrentUser`), com testes.
 - Admin UI (Blazor Server): cookie auth com `SameSite=Strict`, antiforgery nativo, mesmas policies (Fase 17).
 
+## 2b. Webhooks de pagamento — IMPLEMENTADO (Fase 5, 2026-09-18)
+
+| Item | Implementação | Evidência |
+|---|---|---|
+| Autenticidade | `X-Signature` = HMAC-SHA256 hex do **corpo bruto** com `Providers:Payment:WebhookSigningKey` (≥ 16 chars, fora do código, validada no start); comparação em tempo constante (`CryptographicOperations.FixedTimeEquals`); hex malformado ou ausente = inválida | `WebhookSignatureVerifier`, `Webhook_WithBadSignature_IsRejected_AndNothingIsPersisted` (chave errada / sem header / corpo alterado → 401) |
+| Replay | `X-Timestamp` (unix s) com tolerância de 5 min (`WebhookTimestampToleranceSeconds`); depois, dedup por `UNIQUE(provider, provider_event_id)` em `webhook_events` — a 2ª entrega recebe 200 sem efeito | mesmo teste (timestamp −10 min → 401); `DuplicateWebhook_IsAcknowledged_ButAppliedOnce` |
+| Chave vazada não confirma pagamento (D-P5) | `paid`/`refunded` só são aplicados após `GET` no provider; o status do corpo do webhook é apenas um gatilho | `Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted` (webhook "paid" válido para pagamento recusado → pedido continua cancelado) |
+| Flood / corpo grande | rate limit próprio `webhooks` (120/min por IP, 429); `Content-Length`/leitura limitados a 64 KB (413); corpo lido uma vez, em memória, com `CancellationToken` | `ApiSecurityServiceCollectionExtensions`, `PaymentWebhooksEndpoints` |
+| Malformado | JSON inválido ou sem `data` com assinatura válida → 400 ProblemDetails, nada persistido | `Webhook_WithValidSignature_ButMalformedPayload_Returns400` |
+| Logs | eventos 5200–5202: provider, event id, motivo da rejeição — **nunca** o corpo, a assinatura ou a chave; payload fica só em `webhook_events.payload` (jsonb) | verificação manual do log do host em 2026-09-18 (0 ocorrências de chave/token) |
+| Segredos | `Providers:Payment:ApiKey` e `WebhookSigningKey` vazios em `appsettings`; user-secrets em dev (Api e Worker); o simulator traz valores **dev-only** só em `appsettings.Development.json` | `PaymentProviderOptions` (`ValidateOnStart`), `.gitignore` |
+
+Limitações registradas: uma única chave HMAC por provider, sem rotação (P2); tolerância de timestamp depende de relógio sincronizado (NTP no host); a varredura de eventos `Received/Failed` para reprocessamento fica para a Fase 8 — hoje a reconciliação cobre o caso.
+
 ## 3. Segredos e configuração
 
 | Ambiente | Mecanismo | Regras |
@@ -87,14 +101,14 @@ Proibido em qualquer lugar: secrets em código, commits, logs, URLs, mensagens d
 | # | Categoria | Aplicação no projeto | Status |
 |---|---|---|---|
 | A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | **implementado (Fases 3–4)**: `FallbackPolicy` ✔, policies por papel ✔, autorização por recurso em `OrderQueries`/`CancelOrderHandler` (pedido alheio → 404, sem liberar estoque) com `OrderAccessAndCancelTests` ✔ |
-| A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | **parcial (Fase 3)**: PBKDF2-HMAC-SHA512 ✔, chave JWT ≥ 32 bytes validada no start ✔, `ValidAlgorithms=[HS256]` ✔; TLS/HMAC webhooks pendentes |
+| A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | **parcial (Fase 3)**: PBKDF2-HMAC-SHA512 ✔, chave JWT ≥ 32 bytes validada no start ✔, `ValidAlgorithms=[HS256]` ✔; TLS pendente; HMAC-SHA256 de webhooks com comparação em tempo constante ✔ (Fase 5) |
 | A03 | Injection | EF Core parametrizado, validação de entrada, sem SQL dinâmico, sem `Process.Start` | planejado |
 | A04 | Insecure Design | threat model, idempotência, limites (itens por pedido, tamanho de corpo), reconciliação | **parcial (Fase 4)**: idempotência real com chave por usuário ✔ (ADR-010), limites 1–50 itens / 1–99 unidades ✔, overposting: DTOs sem `status/total/customerId` e teste `PlaceOrder_IgnoresServerControlledFields` ✔; limite de corpo e reconciliação pendentes |
 | A05 | Security Misconfiguration | headers (`X-Content-Type-Options`, `Referrer-Policy`, CSP na Admin), CORS explícito, erros sem stack fora de dev, OpenAPI só em dev, containers não-root | planejado |
 | A06 | Vulnerable Components | CPM, `--vulnerable`, dependency review, Trivy, imagens base atualizadas | planejado |
 | A07 | Identification & Authentication Failures | rate limit de login, mensagens genéricas, exp curta, sem enumeração de usuários | **implementado (Fase 3)**: 5/min por IP ✔, 401 idêntico + decoy hash ✔, exp 15 min ✔, testes `AuthEndpointsTests` |
-| A08 | Software & Data Integrity Failures | assinatura de webhooks, outbox (integridade de eventos), lockfile de pacotes, CI com permissões mínimas | planejado |
-| A09 | Security Logging & Monitoring | logs estruturados de auth (sucesso/falha), webhooks rejeitados, alertas de 401/403 anômalos e DLQ, sem PII | **parcial (Fase 3)**: eventos 3000/3001 de login sem PII ✔; alertas na Fase 11/16 |
+| A08 | Software & Data Integrity Failures | assinatura de webhooks, outbox (integridade de eventos), lockfile de pacotes, CI com permissões mínimas | **parcial (Fase 5)**: webhooks assinados + verificados no provider ✔ (§2b); outbox Fase 8; lockfile/CI Fase 14 |
+| A09 | Security Logging & Monitoring | logs estruturados de auth (sucesso/falha), webhooks rejeitados, alertas de 401/403 anômalos e DLQ, sem PII | **parcial (Fases 3/5)**: eventos 3000/3001 de login ✔; 5200 webhook rejeitado + métrica `fh.webhooks.rejected{reason}` ✔; alertas na Fase 11/16 |
 | A10 | SSRF | nenhuma URL de usuário é chamada; hosts de providers em allowlist de configuração | planejado |
 
 ## 5. Dados pessoais (LGPD — princípio de minimização)
@@ -111,5 +125,5 @@ Proibido em qualquer lugar: secrets em código, commits, logs, URLs, mensagens d
 Ver `DEPLOYMENT.md` §"Checklist anti-vazamento".
 
 ## 8. Decisões pendentes de segurança
-- **D-P5**: reconciliar com `GET` no provider antes de aplicar webhook `paid` (custo: +1 chamada; ganho: webhook forjado não confirma pagamento mesmo com chave vazada). Proposta: sim para `paid` e `refunded`; não para eventos de entrega.
+- ~~**D-P5**~~ — **resolvida (Fase 5): sim** para `paid`/`refunded` (implementado em `ApplyPaymentWebhookHandler`); eventos de entrega (Fase 7) não serão reconciliados por webhook.
 - Lockout progressivo de login (P2). Refresh token com rotação (P2). Chave HMAC por webhook com rotação (P2).

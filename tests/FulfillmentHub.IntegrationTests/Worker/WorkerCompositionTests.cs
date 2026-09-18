@@ -18,6 +18,9 @@ public sealed class WorkerCompositionTests
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Database:ConnectionString"] = "Host=localhost;Database=unused;Username=u;Password=p",
+            ["Providers:Payment:BaseUrl"] = "http://provider.test",
+            ["Providers:Payment:ApiKey"] = "unused",
+            ["Providers:Payment:WebhookSigningKey"] = "unused-signing-key-16",
         });
 
         builder.AddFulfillmentHubWorker();
@@ -32,6 +35,7 @@ public sealed class WorkerCompositionTests
         var hostedServices = provider.GetServices<IHostedService>().ToList();
 
         hostedServices.ShouldContain(service => service is HeartbeatService);
+        hostedServices.ShouldContain(service => service is PaymentReconciliationService);
     }
 
     [Fact]
@@ -45,9 +49,11 @@ public sealed class WorkerCompositionTests
         builder.AddFulfillmentHubWorker();
         using var host = builder.Build();
 
-        var exception = await Should.ThrowAsync<OptionsValidationException>(
-            () => host.StartAsync(TestContext.Current.CancellationToken));
+        // ValidateOnStart reports every invalid options type at once (here Database and Providers:Payment).
+        var exception = await Should.ThrowAsync<Exception>(() => host.StartAsync(TestContext.Current.CancellationToken));
 
-        exception.Message.ShouldContain("ConnectionString");
+        var failures = exception is AggregateException aggregate ? aggregate.Flatten().InnerExceptions : [exception];
+        failures.ShouldAllBe(e => e is OptionsValidationException);
+        failures.ShouldContain(e => e.Message.Contains("ConnectionString"));
     }
 }

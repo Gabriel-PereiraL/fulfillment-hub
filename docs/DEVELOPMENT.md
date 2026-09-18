@@ -22,12 +22,17 @@ dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Da
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Jwt:SigningKey" "<64 chars aleatórios, ex.: openssl rand -base64 48>" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Seed:AdminPassword" "<senha dev, 12+ chars>" --project src/FulfillmentHub.Api      # idem Seed:OperatorPassword e Seed:CustomerPassword
+# Provider de pagamento (Fase 5): os valores precisam bater com src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (dev-only, não são segredos reais)
+dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --project src/FulfillmentHub.Worker
+dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Worker
 dotnet tool restore                    # dotnet-ef (manifest em .config/dotnet-tools.json)
 dotnet ef database update --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
 dotnet run --project src/FulfillmentHub.Api -- seed       # dados fictícios de desenvolvimento (só Development; usuários admin@/operator@/customer.local)
 dotnet run --project src/FulfillmentHub.Api               # http://localhost:5000 — /scalar/v1 (OpenAPI UI), /health/live, /health/ready
 dotnet run --project src/FulfillmentHub.Worker
-dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live
+dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live — envia webhooks para http://localhost:5000/api/v1/webhooks/payments
 ```
 
 Aspire Dashboard: http://localhost:18888 (traces/logs/métricas). Os hosts exportam OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (já está em `appsettings.Development.json`).
@@ -49,7 +54,7 @@ Os testes usam o Microsoft.Testing.Platform (`global.json` → `test.runner`): u
 ## 4. Configuração e segredos
 
 - `appsettings.json` (defaults sem segredos) → `appsettings.Development.json` (portas, níveis de log) → **user-secrets** (dev) → variáveis de ambiente (containers/AWS).
-- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` têm defaults em appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (só para o comando `seed`), `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:*`, `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` têm defaults em appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (só para o comando `seed`), `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:ApiKey`/`WebhookSigningKey` (Fase 5; `BaseUrl` tem default `http://localhost:5100`), `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - Options tipadas com `ValidateOnStart`: a aplicação **não sobe** com configuração inválida — é intencional.
 
 ## 5. Convenções de código
@@ -72,3 +77,6 @@ Ver `.editorconfig` (Fase 1) e a skill principal (privada). Resumo público: C# 
 - Testcontainers no Windows: Docker Desktop precisa estar em execução com backend WSL2; primeira execução baixa imagens (lento).
 - `dotnet ef` não encontrado: `dotnet tool restore`.
 - Aplicação não sobe por Options inválidas: ler a mensagem de validação; configurar user-secrets.
+- Pedido fica `Created` (não `AwaitingPayment`): o simulator não está de pé ou `Providers:Payment:ApiKey` não bate — ver log 5101 da Api; a reconciliação do Worker recria o pagamento quando o provider voltar.
+- Pedido fica `AwaitingPayment` para sempre: webhook não chegou (URL/chave do simulator) — ver `Simulator:Payments:WebhookUrl`/`WebhookSigningKey` e o log 5200 da Api; o Worker corrige em até `Worker:Reconciliation:PendingForSeconds`.
+- Smoke rápido do fluxo de pagamento: valor com centavos `…99` recusa (pedido cancelado, estoque devolvido); `…98` aprova sem webhook (só a reconciliação resolve).

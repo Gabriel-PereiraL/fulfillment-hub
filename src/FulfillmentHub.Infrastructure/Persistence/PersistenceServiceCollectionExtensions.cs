@@ -1,5 +1,6 @@
 using FulfillmentHub.Application.Common.Persistence;
 using FulfillmentHub.Infrastructure.Idempotency;
+using FulfillmentHub.Infrastructure.Webhooks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -37,6 +38,8 @@ public static class PersistenceServiceCollectionExtensions
             serviceProvider.GetRequiredService<FulfillmentHubDbContext>());
 
         services.AddSingleton<IdempotencyStore>();
+        services.AddSingleton<WebhookInbox>();
+        services.AddSingleton<WebhookSignatureVerifier>();
 
         return services;
     }

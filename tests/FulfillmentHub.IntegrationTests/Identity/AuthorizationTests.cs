@@ -83,6 +83,9 @@ public sealed class AuthorizationTests(ApiFixture api)
                     ["Jwt:Issuer"] = ApiFixture.JwtIssuer,
                     ["Jwt:Audience"] = ApiFixture.JwtAudience,
                     ["Jwt:SigningKey"] = "too-short",
+                    ["Providers:Payment:BaseUrl"] = "http://provider.test",
+                    ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
+                    ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
                 }));
         }
     }

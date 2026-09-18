@@ -52,19 +52,19 @@ concorrência, resiliência). Não há meta de quantidade nem de cobertura numé
 | T3 | Idempotência da API | duas requisições concorrentes com a mesma chave → uma 201, outra 409 (ou 201 igual após conclusão) | integration | 4 ✔ `PlaceOrder_ConcurrentRequestsWithSameKey_CreateExactlyOneOrder` (10 em paralelo) |
 | T4 | Concorrência de estoque | 20 tarefas paralelas comprando o último item → exatamente 1 sucesso; estoque = 0; **teste falha se o token de concorrência for removido** | integration | 4 ✔ `PlaceOrder_TwentyBuyersForTheLastUnit_ExactlyOneSucceeds`; verificado em 2026-09-18: sem `UseXminAsConcurrencyToken` no `Product` o teste falhou em 3/3 execuções ("there is only one unit in stock") |
 | T5 | Máquina de estados | toda transição da tabela (válida) e uma inválida por estado | unit | 2 ✔ `OrderTests`, `PaymentTests`, `DeliveryTests` |
-| T6 | Webhook duplicado | mesmo `event id` 2x → 200 ambos, um único efeito, métrica de duplicado | integration | 5/7 |
+| T6 | Webhook duplicado | mesmo `event id` 2x → 200 ambos, um único efeito, métrica de duplicado | integration | 5 ✔ `DuplicateWebhook_IsAcknowledged_ButAppliedOnce` (1 linha em `webhook_events`, 1 transição `Paid`) |
 | T7 | Webhook fora de ordem | `delivered` chega antes de `pickup` → estado vai a `Delivered` e o `pickup` posterior é registrado `Applied=false` (`stale`) | integration | 7 |
-| T8 | Webhook assinatura | assinatura inválida/timestamp velho → 401, nada persistido | integration | 5/7 |
-| T9 | Retry correto | 429 com `Retry-After: 2` → espera e repete; 400 → não repete; 503 x3 → falha após 3; timeout → repete só com idempotency key | unit (handler fake) | 6 |
-| T10 | Circuit breaker | após N falhas abre; chamadas seguintes falham rápido (`BrokenCircuitException`); fecha após half-open bem-sucedido | unit/integration | 6 |
+| T8 | Webhook assinatura | assinatura inválida/timestamp velho → 401, nada persistido | integration | 5 ✔ `Webhook_WithBadSignature_IsRejected_AndNothingIsPersisted` (chave errada, timestamp −10 min, sem header, corpo alterado); `…MalformedPayload_Returns400`; `Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted` (D-P5) |
+| T9 | Retry correto | 429 com `Retry-After` → espera e repete; 4xx de contrato → não repete; 503 ×4 → `Unavailable` após 3 retries; timeout por tentativa → repete | unit (handler fake) | 5 ✔ `PaymentGatewayClientTests` (pipeline real de resiliência contra `ScriptedTransport`) |
+| T10 | Circuit breaker | após N falhas abre; chamadas seguintes falham rápido (`BrokenCircuitException`); fecha após half-open bem-sucedido | unit/integration | 5 ✔ parcial: `CircuitBreaker_Opens_AfterSustainedFailures_AndFailsFastWithoutCallingTheProvider` (10 falhas → aberto, 0 chamadas de rede); half-open na Fase 6 |
 | T11 | Cotação expirada | `expires` no passado → recotar; 2ª expiração → falha de negócio | integration (FakeTimeProvider) | 6 |
 | T12 | Outbox perda zero | exceção injetada após `SaveChanges` e antes do publish → mensagem continua na outbox e é publicada pelo worker | integration | 8 |
 | T13 | Outbox retry/Failed | handler lança 3x → `attempts=3`, `Failed`; reprocessar via endpoint → sucesso | integration | 8 |
 | T14 | Consumidor idempotente | mesma mensagem SQS entregue 2x → um efeito | integration (LocalStack) | 9 |
 | T15 | DLQ | mensagem envenenada → DLQ após `maxReceiveCount` | integration (LocalStack) | 9 |
 | T16 | Autorização | cliente A `GET /orders/{id de B}` → 404 (não vaza existência); operador → 200 | integration | 4 ✔ `Customer_CannotSeeOrCancel_AnotherCustomersOrder`, `Operator_SeesEveryOrder_AndCancelsWithOperatorAction` |
-| T17 | Falha permanente de pagamento | `card_declined` → `Payment Failed`, `Order Cancelled(PaymentFailed)`, estoque liberado, 1 outbox `OrderCancelled` | integration | 5 |
-| T18 | Reconciliação | pagamento `Pending` há > X → job consulta provider (`paid`) → estado corrigido | integration | 5 |
+| T17 | Falha permanente de pagamento | `card_declined` → `Payment Failed`, `Order Cancelled(PaymentFailed)`, estoque liberado (outbox `OrderCancelled` na Fase 8) | integration | 5 ✔ `DeclinedPayment_CancelsOrder_AndReleasesStock` (webhook real do simulator, valor sandbox `…99`) |
+| T18 | Reconciliação | pagamento `Pending` há > X → job consulta provider (`paid`) → estado corrigido | integration | 5 ✔ `SilentSettlement_IsPickedUpByReconciliation` (webhook perdido, valor `…98`); `ProviderOutage_NeverFailsTheOrder_AndReconciliationRetriesTheCreation` (503 → pedido `Created`, reconciliação recria no provider); `PaymentCapturedAfterCustomerCancelled_…` (captura tardia não ressuscita pedido cancelado) |
 | T19 | Trace de ponta a ponta | um pedido gera spans API→outbox→worker→provider com o mesmo `trace_id` | integration (exporter in-memory) | 11 |
 | T20 | Convergência sob caos | `SIM_FAILURE_RATE=0.3`, `SIM_WEBHOOK_OUT_OF_ORDER=true` → 100% dos pedidos terminam em estado final em ≤ N s | E2E | 12 |
 

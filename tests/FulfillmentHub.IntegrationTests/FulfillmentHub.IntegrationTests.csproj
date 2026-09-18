@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FulfillmentHub.Api\FulfillmentHub.Api.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.ProviderSimulator\FulfillmentHub.ProviderSimulator.csproj" />
     <ProjectReference Include="..\..\src\FulfillmentHub.Worker\FulfillmentHub.Worker.csproj" />
   </ItemGroup>
 

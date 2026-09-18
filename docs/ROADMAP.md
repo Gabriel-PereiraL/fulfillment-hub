@@ -77,11 +77,12 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 **Riscos**: idempotência com respostas grandes — armazenar body (jsonb) com TTL.
 **Resultado (2026-09-18)**: `POST/GET/LIST /api/v1/orders`, `POST /orders/{id}/cancel`, `GET /api/v1/products`; filtro `Idempotency-Key` + `idempotency_records` (ADR-010 implementação); reserva de estoque com `xmin` + retry limitado; autorização por recurso; keyset por número do pedido; 17 testes de integração novos (160 no total). T4 verificado falhando sem o token (3/3). D-P3 parcialmente resolvida (D-36: taxa nula até a Fase 6). Descobertas: chaves client-side precisam de `ValueGeneratedNever` (D-39); coleções incluídas não vêm ordenadas (D-40).
 
-## Fase 5 — Payments
+## Fase 5 — Payments — `done`
 **Objetivo**: provider de pagamento simulado + integração + webhook idempotente + reconciliação + falhas temporárias/permanentes.
 **Tasks**: simulator `/payments/v1` (contrato INTEGRATIONS §3, cenários); `IPaymentGatewayClient` typed client + resiliência; `CreatePaymentForOrder` (in-process, disparado logo após `PlaceOrder` nesta fase; via outbox na Fase 8); `POST /webhooks/payments` (assinatura, dedup, processamento); `ReconcilePayments` job (Worker mínimo); transições de `Payment`/`Order`; testes: webhook duplicado, atraso, falha temporária (retry) vs permanente (cancela pedido e libera estoque).
 **Gate 5**: fluxo pedido→pago passa em integração com o simulator in-process; webhook duplicado não gera efeito duplo; reconciliação corrige pendente.
 **Riscos**: complexidade do simulator — manter em memória e pequeno.
+**Resultado (2026-09-18)**: simulator `/payments/v1` (bearer, `Idempotency-Key` com replay/409, liquidação automática, webhooks HMAC com retry, caos `Simulator:Chaos`, valores sandbox `…99`/`…98`); `IPaymentGatewayClient` + `Microsoft.Extensions.Http.Resilience` (timeout → retry → CB → timeout por tentativa); `CreatePaymentForOrderHandler` in-process após `PlaceOrder` (D-44); `webhook_events` + `POST /api/v1/webhooks/payments` (HMAC em tempo constante, timestamp, dedup, 64 KB, rate limit) com D-P5 = sim; `PaymentReconciliationService` no Worker (recria no provider quando não há id; relê pendentes). Testes: 185 (10 unit de resiliência, 14 integração de pagamento). Gate 5 fechado; smoke em Kestrel com API + simulator + worker. Descobertas: JSON ilegível dava 500 em Development (D-49); captura tardia após cancelamento precisava de regra própria (D-47).
 
 ## Fase 6 — Delivery provider simulator + integração de saída
 **Objetivo**: simulator "Uber-like" (subconjunto documentado) e cliente resiliente de cotação/criação/consulta/cancelamento.
