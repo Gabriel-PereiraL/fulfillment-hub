@@ -43,7 +43,8 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `fh.provider.request.duration` | histograma | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5 — coberto por `http.client.request.duration` (instrumentação OTel de `HttpClient`, tag `http.request.resend_count` = tentativa) + span `Provider <op>`; métrica própria só se a padrão não bastar (BL-246) |
 | `fh.provider.retries` | counter | `provider`, `operation`, `reason` | Polly telemetry | 11 (BL-246; Polly emite `resilience.polly.strategy.events` já hoje) |
 | `fh.provider.circuit_state` | gauge (0/1/2) | `provider` | Polly telemetry | 11 (BL-246) |
-| `fh.webhooks.received` / `.rejected` / `.duplicates` / `.out_of_order` | counter | `provider`, `event_type` (received), `reason` (rejected) | Api (`PaymentsMetrics`) | 5 ✔ (`received/rejected/duplicates`); `out_of_order` Fase 7 |
+| `fh.webhooks.received` / `.rejected` / `.duplicates` / `.out_of_order` | counter | `provider`, `event_type` (received), `reason` (rejected), `disposition` (out_of_order: `OutOfOrder`/`Stale`) | Api/Application (`WebhooksMetrics`) | 5/7 ✔ |
+| `fh.deliveries.events` | counter | `disposition` (`Applied`, `Duplicate`, `OutOfOrder`, `Stale`, `Conflict`) | Application (`DeliveryStatusApplier`) | 7 ✔ |
 | `fh.payments.settled` | counter | `status` (`paid`, `failed`, `paid_after_cancellation`) | Application (`PaymentStatusApplier`) | 5 ✔ |
 | `fh.deliveries.quotes` / `fh.deliveries.requested` | counter | `outcome` (`quoted`, `fallback_fee`, `rejected`, `requoted` / `created`, `adopted`, `adopted_duplicate`, `deferred`, `rejected`, `quote_expired_twice`) | Application (`DeliveriesMetrics`) | 6 ✔ |
 | `fh.webhooks.processing.duration` | histograma | `provider` | Worker | 7 |
@@ -53,7 +54,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `fh.queue.messages.processed` / `.failed` | counter | `queue`, `consumer` | Worker | 9 |
 | `fh.queue.message.age` | histograma (s: `SentTimestamp` → receive) | `queue` | Worker | 9 |
 | `fh.queue.dlq.depth` | gauge | `queue` | Worker (GetQueueAttributes) + CloudWatch nativo | 9/16 |
-| `fh.reconciliation.corrections` | counter | `kind` (`payment_status`) | Application (`ReconcilePaymentsHandler`, executado pelo Worker) | 5 ✔ |
+| `fh.reconciliation.corrections` | counter | `kind` (`payment_status`, `delivery_status`) | Application (`ReconcilePaymentsHandler`, executado pelo Worker) | 5 ✔ |
 | `process.runtime.dotnet.*` (GC, threadpool, exceptions) | vários | — | nativa | 1 |
 
 ## 5. Traces (spans próprios)

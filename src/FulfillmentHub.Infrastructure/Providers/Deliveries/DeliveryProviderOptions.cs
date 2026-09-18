@@ -32,5 +32,11 @@ public sealed class DeliveryProviderOptions : ProviderResilienceOptions
     [Range(5, 3600)]
     public int TokenRefreshSkewSeconds { get; init; } = 60;
 
+    /// <summary>Webhooks whose timestamp differs from the server clock by more than this are rejected (replay protection).</summary>
+    [Range(30, 3600)]
+    public int WebhookTimestampToleranceSeconds { get; init; } = 300;
+
     public TimeSpan TokenRefreshSkew => TimeSpan.FromSeconds(TokenRefreshSkewSeconds);
+
+    public TimeSpan WebhookTimestampTolerance => TimeSpan.FromSeconds(WebhookTimestampToleranceSeconds);
 }

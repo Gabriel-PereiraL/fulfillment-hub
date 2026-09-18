@@ -70,6 +70,9 @@ public sealed class SimulatedDelivery
     /// <summary>Sandbox rule: the parcel comes back instead of being delivered.</summary>
     public bool WillReturn { get; init; }
 
+    /// <summary>Sandbox rule: no webhooks for this delivery (lost-webhook scenario; reconciliation has to notice).</summary>
+    public bool SendWebhooks { get; init; } = true;
+
     public string? UndeliverableReason { get; set; }
 
     public DeliveryResponse ToResponse() => new(

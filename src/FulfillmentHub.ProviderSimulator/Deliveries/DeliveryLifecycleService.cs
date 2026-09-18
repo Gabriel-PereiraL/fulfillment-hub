@@ -52,7 +52,7 @@ public sealed partial class DeliveryLifecycleService(
     {
         var settings = options.CurrentValue;
 
-        if (string.IsNullOrWhiteSpace(settings.WebhookUrl))
+        if (!delivery.SendWebhooks || string.IsNullOrWhiteSpace(settings.WebhookUrl))
         {
             return;
         }

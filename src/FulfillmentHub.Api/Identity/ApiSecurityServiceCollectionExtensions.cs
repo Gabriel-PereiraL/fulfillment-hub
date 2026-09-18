@@ -26,7 +26,7 @@ public static class ApiSecurityServiceCollectionExtensions
 
             // Credential stuffing / brute force (OWASP A07): a handful of attempts per client IP per minute.
             // Webhooks: generous per-client budget; providers retry with backoff on 429.
-            options.AddPolicy(Webhooks.PaymentWebhooksEndpoints.RateLimitPolicy, httpContext =>
+            options.AddPolicy(Webhooks.WebhookReceiver.RateLimitPolicy, httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     factory: _ => new FixedWindowRateLimiterOptions

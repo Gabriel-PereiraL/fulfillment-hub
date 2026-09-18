@@ -3,6 +3,7 @@ using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Application.Orders;
 using FulfillmentHub.Application.Payments;
+using FulfillmentHub.Application.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FulfillmentHub.Application;
@@ -22,6 +23,7 @@ public static class ApplicationServiceCollectionExtensions
 
         services.AddScoped<ProductQueries>();
 
+        services.AddSingleton<WebhooksMetrics>();
         services.AddSingleton<PaymentsMetrics>();
         services.AddScoped<PaymentStatusApplier>();
         services.AddScoped<CreatePaymentForOrderHandler>();
@@ -32,6 +34,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<CheckoutDeliveryQuoter>();
         services.AddScoped<RequestDeliveryHandler>();
         services.AddScoped<RequestPendingDeliveriesHandler>();
+        services.AddScoped<DeliveryStatusApplier>();
+        services.AddScoped<ApplyDeliveryWebhookHandler>();
+        services.AddScoped<ReconcileDeliveriesHandler>();
 
         return services;
     }

@@ -66,12 +66,12 @@ internal static class PaymentsTestSupport
         return await db.Orders.AsNoTracking().Include(o => o.StatusHistory).SingleAsync(o => o.Id == new OrderId(orderId));
     }
 
-    public static async Task<List<WebhookEvent>> GetWebhookEventsAsync(ApiFixture api, string providerEventId)
+    public static async Task<List<WebhookEvent>> GetWebhookEventsAsync(ApiFixture api, string providerEventId, string provider = ProviderName)
     {
         using var scope = api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FulfillmentHubDbContext>();
         return await db.WebhookEvents.AsNoTracking()
-            .Where(e => e.Provider == ProviderName && e.ProviderEventId == providerEventId)
+            .Where(e => e.Provider == provider && e.ProviderEventId == providerEventId)
             .ToListAsync();
     }
 
@@ -81,16 +81,18 @@ internal static class PaymentsTestSupport
         string signingKey = ProviderSimulatorFactory.WebhookSigningKey,
         DateTimeOffset? timestamp = null,
         bool includeSignature = true,
-        string? signedBody = null)
+        string? signedBody = null,
+        string path = WebhookPath,
+        string signatureHeader = WebhookDispatcher.SignatureHeader)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, WebhookPath)
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
         };
 
         if (includeSignature)
         {
-            request.Headers.Add(WebhookDispatcher.SignatureHeader, WebhookDispatcher.Sign(signingKey, signedBody ?? body));
+            request.Headers.Add(signatureHeader, WebhookDispatcher.Sign(signingKey, signedBody ?? body));
         }
 
         request.Headers.Add(WebhookDispatcher.TimestampHeader,

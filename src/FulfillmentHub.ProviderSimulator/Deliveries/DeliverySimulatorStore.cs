@@ -146,6 +146,7 @@ public sealed class DeliverySimulatorStore(IOptionsMonitor<DeliverySimulatorOpti
             ManifestReference = request.ManifestReference,
             DropoffZip = dropoff.ZipCode,
             WillReturn = HasSandboxSuffix(dropoff.ZipCode, "002"),
+            SendWebhooks = !HasSandboxSuffix(dropoff.ZipCode, "003"),
             NextTransitionAt = now.AddMilliseconds(settings.CourierAssignMs),
             PickupEta = now.AddMinutes(quote?.PickupDurationMinutes ?? 10),
             DropoffEta = now.AddMinutes(quote?.DurationMinutes ?? 30),

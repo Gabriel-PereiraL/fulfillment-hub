@@ -26,6 +26,7 @@ public sealed class DeliveryFlowTests(ApiFixture api)
 {
     private const string UndeliverablePostalCode = "00000-000";
     private const string ShortLivedQuotePostalCode = "50000-001";
+    private const string SilentDeliveryPostalCode = "50000-003"; // sandbox: the provider sends no webhooks
 
     [Fact]
     public async Task PlaceOrder_QuotesTheDeliveryAtCheckout_AndChargesTheFee()
@@ -94,7 +95,7 @@ public sealed class DeliveryFlowTests(ApiFixture api)
             order.Total.Amount.ShouldBe(placed.Total.Amount, "the fee charged at checkout does not change");
 
             var delivery = await GetDeliveryAsync(order.DeliveryId.Value);
-            delivery.Status.ShouldBe(DeliveryStatus.Pending);
+            delivery.Status.ShouldBeOneOf(DeliveryStatus.Pending, DeliveryStatus.Pickup); // the courier webhook may already be in
             delivery.ProviderDeliveryId.ShouldStartWith("del_");
             delivery.TrackingUrl.ShouldNotBeNullOrWhiteSpace();
             delivery.QuoteId.ShouldBe((await GetQuotesAsync(placed.Id)).Single().Id, "the checkout quote was still valid");
@@ -226,7 +227,8 @@ public sealed class DeliveryFlowTests(ApiFixture api)
     [Fact]
     public async Task CancelOrder_OnceTheCourierHasTheParcel_IsRefusedByTheProvider()
     {
-        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice);
+        // Silent delivery: no webhook moves the order to InDelivery, so the refusal comes from the provider itself.
+        var (client, placed) = await PlacePaidOrderAsync(ApprovedPrice, SilentDeliveryPostalCode);
         using (client)
         {
             (await RequestDeliveryAsync(placed.Id)).IsSuccess.ShouldBeTrue();

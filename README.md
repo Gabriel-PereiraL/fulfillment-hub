@@ -5,7 +5,7 @@ monólito modular — projeto de portfólio focado em engenharia backend: consis
 concorrência, resiliência (retry/backoff/jitter/circuit breaker), mensageria (SQS), segurança, observabilidade
 (OpenTelemetry) e operação (Docker, CI, AWS ECS/RDS via Terraform).
 
-> **Status**: Fases 0–6 concluídas (fundação, domínio + banco, auth JWT, pedidos idempotentes, pagamentos com provider simulado + webhooks + reconciliação, entregas com provider simulado "Uber-like" + cotação no checkout). Próxima: Fase 7 (webhooks de entrega). 211 testes.
+> **Status**: Fases 0–7 concluídas (fundação, domínio + banco, auth JWT, pedidos idempotentes, pagamentos e entregas com providers simulados, webhooks assinados com dedup/ordem e reconciliação — um pedido vai de `Created` a `Delivered` ponta a ponta). Próxima: Fase 8 (transactional outbox). 217 testes.
 > Acompanhe em [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) e [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.

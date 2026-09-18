@@ -72,7 +72,7 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 - **Autorização**: `FallbackPolicy` = usuário autenticado (negar por padrão). Policies: `CustomerOnly`, `OperatorOrAdmin`, `AdminOnly`. Autorização **por recurso** dentro do caso de uso (o principal é passado como `ICurrentUser`), com testes.
 - Admin UI (Blazor Server): cookie auth com `SameSite=Strict`, antiforgery nativo, mesmas policies (Fase 17).
 
-## 2b. Webhooks de pagamento — IMPLEMENTADO (Fase 5, 2026-09-18)
+## 2b. Webhooks de pagamento e entrega — IMPLEMENTADO (Fases 5 e 7, 2026-09-18)
 
 | Item | Implementação | Evidência |
 |---|---|---|
@@ -83,6 +83,8 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 | Malformado | JSON inválido ou sem `data` com assinatura válida → 400 ProblemDetails, nada persistido | `Webhook_WithValidSignature_ButMalformedPayload_Returns400` |
 | Logs | eventos 5200–5202: provider, event id, motivo da rejeição — **nunca** o corpo, a assinatura ou a chave; payload fica só em `webhook_events.payload` (jsonb) | verificação manual do log do host em 2026-09-18 (0 ocorrências de chave/token) |
 | Segredos | `Providers:Payment:ApiKey` e `WebhookSigningKey` vazios em `appsettings`; user-secrets em dev (Api e Worker); o simulator traz valores **dev-only** só em `appsettings.Development.json` | `PaymentProviderOptions` (`ValidateOnStart`), `.gitignore` |
+
+Fase 7: o mesmo pipeline (`WebhookReceiver`) recebe `event.delivery_status` em `POST /api/v1/webhooks/deliveries` com **chave e header próprios** (`Providers:Delivery:WebhookSigningKey`, `X-Uber-Signature`): a chave do provider de pagamento não assina eventos de entrega (`Webhook_WithBadSignature_OrWrongHeader_IsRejected`). Eventos de entrega **não** são confirmados com `GET` (D-59): um evento forjado com chave vazada pode, no máximo, avançar o status da entrega/pedido (sem dinheiro envolvido) e nunca regredi-lo; a reconciliação com o provider corrige divergências.
 
 Limitações registradas: uma única chave HMAC por provider, sem rotação (P2); tolerância de timestamp depende de relógio sincronizado (NTP no host); a varredura de eventos `Received/Failed` para reprocessamento fica para a Fase 8 — hoje a reconciliação cobre o caso.
 

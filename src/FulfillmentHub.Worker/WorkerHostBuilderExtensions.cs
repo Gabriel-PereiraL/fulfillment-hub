@@ -32,6 +32,11 @@ public static class WorkerHostBuilderExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        builder.Services.AddOptions<DeliveryReconciliationOptions>()
+            .BindConfiguration(DeliveryReconciliationOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         builder.Services.AddOptions<WorkerOptions>()
             .BindConfiguration(WorkerOptions.SectionName)
             .ValidateDataAnnotations()
@@ -42,6 +47,7 @@ public static class WorkerHostBuilderExtensions
         builder.Services.AddHostedService<HeartbeatService>();
         builder.Services.AddHostedService<PaymentReconciliationService>();
         builder.Services.AddHostedService<DeliveryRequestService>();
+        builder.Services.AddHostedService<DeliveryReconciliationService>();
 
         return builder;
     }

@@ -198,19 +198,23 @@ public sealed partial class SimulatedDeliveryProviderClient(
         _ => throw new InvalidOperationException($"Unknown provider delivery status '{providerStatus}'."),
     };
 
-    private static CourierInfo? ToCourier(ProviderCourier? courier)
+    private static CourierInfo? ToCourier(ProviderCourier? courier) =>
+        courier is null ? null : MapCourier(courier.Name, courier.VehicleType, courier.PhoneNumber, courier.Location?.Lat, courier.Location?.Lng);
+
+    /// <summary>Courier details as the provider reports them (API responses and webhooks alike); the phone is stored masked.</summary>
+    public static CourierInfo? MapCourier(string? name, string? vehicleType, string? phoneNumber, double? latitude, double? longitude)
     {
-        if (courier is null || string.IsNullOrWhiteSpace(courier.Name))
+        if (string.IsNullOrWhiteSpace(name))
         {
             return null;
         }
 
         PhoneNumber? phone = null;
-        if (!string.IsNullOrWhiteSpace(courier.PhoneNumber))
+        if (!string.IsNullOrWhiteSpace(phoneNumber))
         {
             try
             {
-                phone = PhoneNumber.Of(courier.PhoneNumber);
+                phone = PhoneNumber.Of(phoneNumber);
             }
             catch (DomainException)
             {
@@ -218,7 +222,7 @@ public sealed partial class SimulatedDeliveryProviderClient(
             }
         }
 
-        return CourierInfo.Create(courier.Name, phone, courier.VehicleType, courier.Location?.Lat, courier.Location?.Lng);
+        return CourierInfo.Create(name, phone, vehicleType, latitude, longitude);
     }
 
     /// <summary>The provider takes addresses as a JSON-encoded structured address (docs/INTEGRATIONS.md §1.3).</summary>

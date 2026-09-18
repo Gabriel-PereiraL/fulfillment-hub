@@ -36,9 +36,9 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
                 ["Simulator:Delivery:ClientSecret"] = DeliveryClientSecret,
                 ["Simulator:Delivery:CustomerId"] = DeliveryCustomerId,
                 ["Simulator:Delivery:WebhookSigningKey"] = DeliveryWebhookSigningKey,
-                ["Simulator:Delivery:WebhookUrl"] = "",
-                ["Simulator:Delivery:CourierAssignMs"] = "100",
-                ["Simulator:Delivery:StepMs"] = "200",
+                ["Simulator:Delivery:WebhookUrl"] = "http://api.test/api/v1/webhooks/deliveries",
+                ["Simulator:Delivery:CourierAssignMs"] = "500",
+                ["Simulator:Delivery:StepMs"] = "500",
             }));
         builder.ConfigureTestServices(services =>
             services.AddHttpClient(WebhookDispatcher.HttpClientName)

@@ -31,6 +31,7 @@ builder.Services.AddFulfillmentHubDeliveryProvider();
 builder.Services.AddFulfillmentHubApplication();
 builder.Services.AddFulfillmentHubIdentityApplication();
 builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddScoped<WebhookReceiver>();
 
 builder.Services.AddFulfillmentHubApiSecurity();
 builder.Services.AddValidation();
@@ -82,6 +83,7 @@ app.MapUsersEndpoints();
 app.MapProductsEndpoints();
 app.MapOrdersEndpoints();
 app.MapPaymentWebhooksEndpoints();
+app.MapDeliveryWebhooksEndpoints();
 
 app.Run();
 

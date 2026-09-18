@@ -61,11 +61,11 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-062 | Simulator de entrega `/delivery/v1` (token, quote, create, get, cancel, erros, ciclo de vida, webhooks) | 6 | P0 | done |
 | BL-063 | `IDeliveryProviderClient` + pipeline (timeout/retry/CB) + matriz de retry testada | 6 | P0 | done |
 | BL-064 | Recotação em `expired_quote`; reconciliação em `409 duplicate_delivery` | 6 | P0 | done |
-| BL-065 | Cenários do simulator: latência, failure rate, timeout, 429+Retry-After, 503 couriers_busy, webhook duplicado/atrasado/fora de ordem, `SIM_FORCE_STATUS` | 6–7 | P0 | parcial (latência, failure rate, timeout, 429 + `Retry-After`, `couriers_busy`, duplicado/atraso ✔; fora de ordem só emissão; `SIM_FORCE_STATUS` → BL-066 rota admin) |
+| BL-065 | Cenários do simulator: latência, failure rate, timeout, 429+Retry-After, 503 couriers_busy, webhook duplicado/atrasado/fora de ordem, `SIM_FORCE_STATUS` | 6–7 | P0 | done (fora de ordem/duplicado/atraso emitidos e consumidos na Fase 7; `SIM_FORCE_STATUS` → BL-066) |
 | BL-247 | Cobrar a diferença (ou estornar) quando a taxa cotada no checkout difere do custo real da entrega — hoje a loja absorve (D-51) | 17+ | P3 | todo |
 | BL-248 | Varredura de entregas `Requested` órfãs sem pedido `Paid` (ex.: pedido cancelado entre a criação local e a confirmação) — hoje só logs | 8 | P2 | todo |
 | BL-066 | Rota admin do simulator (`POST /admin/scenario`) | 7 | P1 | todo |
-| BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | parcial (pagamentos ✔ Fase 5: `PaymentReconciliationService`; entregas Fase 8) |
+| BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | done (pagamentos Fase 5, entregas Fase 7: `DeliveryReconciliationService`) |
 | BL-244 | Estorno automático quando o provider captura após o cliente cancelar (`paid_after_cancellation`) — hoje só log 5002 + métrica | 8 | P1 | todo |
 | BL-245 | Simulator: `WebhookFailFirstN` (força retry de entrega de webhook) e cenário de webhook fora de ordem | 7 | P2 | todo |
 | BL-068 | Contract tests: schemas do simulator vs. DTOs do cliente | 12 | P1 | todo |
@@ -126,7 +126,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-141 | ArchitectureTests (NetArchTest): dependências, convenções (`sealed`, sufixos) | 1 | P0 | done |
 | BL-142 | Idempotência de `POST /orders` (3 cenários) | 4 | P0 | done |
 | BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | done |
-| BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | parcial (duplicado ✔ T6; atrasado/fora de ordem Fase 7) |
+| BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | done (pagamento T6 Fase 5; entrega T6/T7 Fase 7) |
 | BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 5/6 | P0 | parcial (retry ✔ T9, abre ✔ T10; half-open Fase 6) |
 | BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | todo |
 | BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |

@@ -20,10 +20,13 @@ Routes (contracts in `docs/INTEGRATIONS.md`):
   `metadata.delivery_id`), `GET /customers/{id}/deliveries/{id}`, `POST .../cancel` (`noncancelable_delivery` once the
   courier has the parcel). Deliveries move `pending → pickup → pickup_complete → dropoff → delivered` on a timer
   (`Simulator:Delivery:CourierAssignMs` / `StepMs`) and each transition emits an `event.delivery_status` webhook signed
-  in `X-Uber-Signature` when `Simulator:Delivery:WebhookUrl` is set (consumed from Phase 7 on).
+  in `X-Uber-Signature` when `Simulator:Delivery:WebhookUrl` is set (Development points at the API's
+  `/api/v1/webhooks/deliveries`); `WebhookDuplicateRate`, `WebhookDelayMs` and `WebhookOutOfOrder` reproduce the real
+  provider's weak delivery guarantees.
 
   Sandbox rules by dropoff `zip_code`: starting with `00000` → `address_undeliverable`; last digits `001` → 1-second
-  quotes (forces `expired_quote`); `002` → the parcel is `returned`. Fees are deterministic whole reais per zip code.
+  quotes (forces `expired_quote`); `002` → the parcel is `returned`; `003` → no webhooks for that delivery (lost-webhook
+  scenario). Fees are deterministic whole reais per zip code.
 
 Payment sandbox amounts (like the "magic" test values of real providers): cents ending in `99` are declined
 (`card_declined`), cents ending in `98` are approved **without** a webhook (lost-webhook scenario; the API's

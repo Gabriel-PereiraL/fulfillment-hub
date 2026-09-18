@@ -50,6 +50,7 @@ public sealed class WorkerCompositionTests
         hostedServices.ShouldContain(service => service is HeartbeatService);
         hostedServices.ShouldContain(service => service is PaymentReconciliationService);
         hostedServices.ShouldContain(service => service is DeliveryRequestService);
+        hostedServices.ShouldContain(service => service is DeliveryReconciliationService);
     }
 
     [Fact]
