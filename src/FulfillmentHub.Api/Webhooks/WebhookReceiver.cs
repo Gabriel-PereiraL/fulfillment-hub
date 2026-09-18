@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using FulfillmentHub.Api.Middleware;
+using FulfillmentHub.Application.Messaging;
 using FulfillmentHub.Application.Webhooks;
 using FulfillmentHub.Infrastructure.Webhooks;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -10,44 +11,31 @@ namespace FulfillmentHub.Api.Webhooks;
 /// <summary>How a provider signs its webhooks and which key/window to verify them with.</summary>
 public sealed record WebhookSource(string Provider, string SignatureHeader, string TimestampHeader, string SigningKey, TimeSpan TimestampTolerance);
 
-/// <summary>What the endpoint-specific code found in a verified, deduplicated payload.</summary>
-public sealed record WebhookIdentity(string EventId, string EventType);
-
-public abstract record WebhookOutcome
-{
-    public sealed record Processed : WebhookOutcome;
-
-    public sealed record Ignored(string Reason) : WebhookOutcome;
-
-    public sealed record Failed(string Error) : WebhookOutcome;
-}
+/// <summary>Body of the <c>fh-webhooks-inbound</c> message: just a pointer to the stored event (ADR-005).</summary>
+public sealed record WebhookInboundMessage(Guid WebhookEventId, string Provider);
 
 /// <summary>
 /// The inbound webhook pipeline shared by every provider (docs/INTEGRATIONS.md §5): size limit → raw-body HMAC and
-/// timestamp check → parse → persist in the inbox (dedup by provider event id) → process → always 200 once stored.
+/// timestamp check → identify → persist in the inbox (dedup by provider event id) → hand off → always 200 once stored.
+/// Hand-off is a queue message when messaging is on; otherwise (or if the broker refuses) the event is processed here.
 /// Anonymous by design: the signature authenticates the caller.
 /// </summary>
 public sealed partial class WebhookReceiver(
     WebhookSignatureVerifier verifier,
     WebhookInbox inbox,
+    WebhookEventProcessor processor,
+    IMessagePublisher publisher,
     WebhooksMetrics metrics,
     ILogger<WebhookReceiver> logger)
 {
     public const string RateLimitPolicy = "webhooks";
     public const int MaxBodyBytes = 64 * 1024;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-    };
-
-    public async Task<Results<Ok, ProblemHttpResult, StatusCodeHttpResult>> ReceiveAsync<TPayload>(
+    public async Task<Results<Ok, ProblemHttpResult, StatusCodeHttpResult>> ReceiveAsync(
         HttpContext httpContext,
         WebhookSource source,
-        Func<TPayload, WebhookIdentity?> identify,
-        Func<TPayload, CancellationToken, Task<WebhookOutcome>> process,
+        IWebhookProcessor providerProcessor,
         CancellationToken cancellationToken)
-        where TPayload : class
     {
         var request = httpContext.Request;
 
@@ -78,25 +66,16 @@ public sealed partial class WebhookReceiver(
             return TypedResults.Problem(title: "Webhook rejected", detail: "Invalid or missing signature.", statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        TPayload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<TPayload>(body, JsonOptions);
-        }
-        catch (JsonException)
-        {
-            payload = null;
-        }
-
-        var identity = payload is null ? null : identify(payload);
-        if (payload is null || identity is null)
+        var payload = Encoding.UTF8.GetString(body);
+        var identity = providerProcessor.Identify(payload);
+        if (identity is null)
         {
             metrics.Rejected(source.Provider, "malformed");
             return TypedResults.Problem(title: "Webhook rejected", detail: "Malformed event payload.", statusCode: StatusCodes.Status400BadRequest);
         }
 
         var correlationId = httpContext.Response.Headers[CorrelationIdMiddleware.HeaderName].FirstOrDefault();
-        var recorded = await inbox.TryRecordAsync(source.Provider, identity.EventId, identity.EventType, Encoding.UTF8.GetString(body), correlationId, cancellationToken);
+        var recorded = await inbox.TryRecordAsync(source.Provider, identity.EventId, identity.EventType, payload, correlationId, cancellationToken);
 
         if (recorded is null)
         {
@@ -107,29 +86,41 @@ public sealed partial class WebhookReceiver(
 
         metrics.Received(source.Provider, identity.EventType);
 
-        // Processing failures are recorded, not surfaced: the event is safely stored and reconciliation catches up.
+        if (await TryEnqueueAsync(recorded.Id, source.Provider, identity.EventId, correlationId, cancellationToken))
+        {
+            return TypedResults.Ok();
+        }
+
+        // Messaging off or broker unavailable: process now. Failures are recorded on the event, never surfaced.
+        await processor.ProcessAsync(recorded.Id, cancellationToken);
+        return TypedResults.Ok();
+    }
+
+    private async Task<bool> TryEnqueueAsync(Guid webhookEventId, string provider, string providerEventId, string? correlationId, CancellationToken cancellationToken)
+    {
+        if (!publisher.IsEnabled)
+        {
+            return false;
+        }
+
         try
         {
-            switch (await process(payload, cancellationToken))
-            {
-                case WebhookOutcome.Processed:
-                    await inbox.MarkProcessedAsync(recorded.Id, cancellationToken);
-                    break;
-                case WebhookOutcome.Ignored ignored:
-                    await inbox.MarkIgnoredAsync(recorded.Id, ignored.Reason, cancellationToken);
-                    break;
-                case WebhookOutcome.Failed failed:
-                    await inbox.MarkFailedAsync(recorded.Id, failed.Error, cancellationToken);
-                    break;
-            }
+            var envelope = new MessageEnvelope(
+                webhookEventId.ToString(),
+                nameof(WebhookInboundMessage),
+                JsonSerializer.Serialize(new WebhookInboundMessage(webhookEventId, provider)),
+                DateTimeOffset.UtcNow,
+                correlationId,
+                System.Diagnostics.Activity.Current?.Id);
+
+            await publisher.PublishAsync(Queues.WebhooksInbound, envelope, cancellationToken);
+            return true;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            LogProcessingFailed(exception, source.Provider, identity.EventId);
-            await inbox.MarkFailedAsync(recorded.Id, exception.GetType().Name + ": " + exception.Message, CancellationToken.None);
+            LogEnqueueFailed(exception, provider, providerEventId);
+            return false;
         }
-
-        return TypedResults.Ok();
     }
 
     private static async Task<byte[]?> ReadBodyAsync(HttpRequest request, CancellationToken cancellationToken)
@@ -157,6 +148,6 @@ public sealed partial class WebhookReceiver(
     [LoggerMessage(EventId = 5201, Level = LogLevel.Information, Message = "Webhook {Provider}/{ProviderEventId} already received; ignoring duplicate")]
     private partial void LogDuplicate(string provider, string providerEventId);
 
-    [LoggerMessage(EventId = 5202, Level = LogLevel.Error, Message = "Processing webhook {Provider}/{ProviderEventId} failed")]
-    private partial void LogProcessingFailed(Exception exception, string provider, string providerEventId);
+    [LoggerMessage(EventId = 5203, Level = LogLevel.Warning, Message = "Could not enqueue webhook {Provider}/{ProviderEventId}; processing in-process instead")]
+    private partial void LogEnqueueFailed(Exception exception, string provider, string providerEventId);
 }

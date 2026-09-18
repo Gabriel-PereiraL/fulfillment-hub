@@ -1,10 +1,12 @@
 using FulfillmentHub.Application;
 using FulfillmentHub.Application.Identity;
+using FulfillmentHub.Infrastructure.Messaging;
 using FulfillmentHub.Infrastructure.Outbox;
 using FulfillmentHub.Infrastructure.Persistence;
 using FulfillmentHub.Infrastructure.Providers.Deliveries;
 using FulfillmentHub.Infrastructure.Providers.Payments;
 using FulfillmentHub.Infrastructure.Telemetry;
+using FulfillmentHub.Worker.Messaging;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace FulfillmentHub.Worker;
@@ -22,6 +24,7 @@ public static class WorkerHostBuilderExtensions
         builder.Services.AddFulfillmentHubDeliveryProvider();
         builder.Services.AddFulfillmentHubApplication();
         builder.Services.AddFulfillmentHubOutboxPublisher();
+        builder.Services.AddFulfillmentHubMessaging();
         builder.Services.AddScoped<ICurrentUser, AnonymousCurrentUser>();
 
         builder.Services.AddOptions<ReconciliationOptions>()
@@ -52,6 +55,9 @@ public static class WorkerHostBuilderExtensions
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<WorkerMetrics>();
         builder.Services.AddHostedService<HeartbeatService>();
+        builder.Services.AddHostedService<SqsProvisioningService>(); // before the consumers
+        builder.Services.AddHostedService<DomainEventsConsumer>();
+        builder.Services.AddHostedService<WebhooksInboundConsumer>();
         builder.Services.AddHostedService<OutboxPublisherService>();
         builder.Services.AddHostedService<PaymentReconciliationService>();
         builder.Services.AddHostedService<DeliveryRequestService>();

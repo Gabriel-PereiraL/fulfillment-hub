@@ -20,6 +20,21 @@ services:
       timeout: 3s
       retries: 10
 
+  # SQS emulation for local development and tests (ADR-005). Credentials are LocalStack's well-known placeholders.
+  localstack:
+    image: localstack/localstack:4
+    profiles: ["deps"]
+    environment:
+      SERVICES: sqs
+      DEBUG: "0"
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -Eq '\"sqs\": \"(available|running)\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   # Standalone OpenTelemetry UI (traces, logs, metrics) for local development only.
   # This is NOT .NET Aspire orchestration; hosts export OTLP to it via OTEL_EXPORTER_OTLP_ENDPOINT.
   aspire-dashboard:
