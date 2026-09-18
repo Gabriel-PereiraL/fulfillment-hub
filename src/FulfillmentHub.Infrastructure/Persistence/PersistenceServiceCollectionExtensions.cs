@@ -27,6 +27,9 @@ public static class PersistenceServiceCollectionExtensions
                 npgsql.CommandTimeout(database.CommandTimeoutSeconds);
                 npgsql.MigrationsAssembly(typeof(FulfillmentHubDbContext).Assembly.GetName().Name);
             });
+
+            // PostgreSQL convention: unquoted snake_case identifiers keep raw SQL and psql sessions readable.
+            options.UseSnakeCaseNamingConvention();
         });
 
         services.AddScoped<IFulfillmentHubDbContext>(serviceProvider =>

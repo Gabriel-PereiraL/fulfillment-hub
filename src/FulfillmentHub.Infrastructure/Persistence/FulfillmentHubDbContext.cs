@@ -1,4 +1,11 @@
 using FulfillmentHub.Application.Common.Persistence;
+using FulfillmentHub.Domain.Catalog;
+using FulfillmentHub.Domain.Customers;
+using FulfillmentHub.Domain.Deliveries;
+using FulfillmentHub.Domain.Identity;
+using FulfillmentHub.Domain.Orders;
+using FulfillmentHub.Domain.Payments;
+using FulfillmentHub.Infrastructure.Persistence.Conventions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FulfillmentHub.Infrastructure.Persistence;
@@ -6,5 +13,36 @@ namespace FulfillmentHub.Infrastructure.Persistence;
 public sealed class FulfillmentHubDbContext(DbContextOptions<FulfillmentHubDbContext> options)
     : DbContext(options), IFulfillmentHubDbContext
 {
-    // Entity configurations (IEntityTypeConfiguration<T>) are applied here from Phase 2 onwards.
+    public const string OrderNumberSequence = "order_number_seq";
+
+    public DbSet<Product> Products => Set<Product>();
+
+    public DbSet<Customer> Customers => Set<Customer>();
+
+    public DbSet<Order> Orders => Set<Order>();
+
+    public DbSet<Payment> Payments => Set<Payment>();
+
+    public DbSet<DeliveryQuote> DeliveryQuotes => Set<DeliveryQuote>();
+
+    public DbSet<Delivery> Deliveries => Set<Delivery>();
+
+    public DbSet<User> Users => Set<User>();
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<ProductId>().HaveConversion<StronglyTypedIdConverter<ProductId>>();
+        configurationBuilder.Properties<CustomerId>().HaveConversion<StronglyTypedIdConverter<CustomerId>>();
+        configurationBuilder.Properties<OrderId>().HaveConversion<StronglyTypedIdConverter<OrderId>>();
+        configurationBuilder.Properties<PaymentId>().HaveConversion<StronglyTypedIdConverter<PaymentId>>();
+        configurationBuilder.Properties<DeliveryId>().HaveConversion<StronglyTypedIdConverter<DeliveryId>>();
+        configurationBuilder.Properties<DeliveryQuoteId>().HaveConversion<StronglyTypedIdConverter<DeliveryQuoteId>>();
+        configurationBuilder.Properties<UserId>().HaveConversion<StronglyTypedIdConverter<UserId>>();
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasSequence<long>(OrderNumberSequence).StartsAt(1000);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(FulfillmentHubDbContext).Assembly);
+    }
 }
