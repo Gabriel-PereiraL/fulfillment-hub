@@ -52,9 +52,9 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `fh.outbox.published` | counter | `outcome` (`processed`, `retried`, `failed`), `type` | `OutboxProcessor` | 8 ✔ |
 | `fh.outbox.lag` | histograma (s: `now - occurred_at` ao publicar) | `type` | `OutboxProcessor` | 8 ✔ |
 | `fh.outbox.publish.duration` | histograma (ms por handler) | `type` | `OutboxProcessor` | 8 ✔ |
-| `fh.queue.messages.processed` / `.failed` | counter | `queue`, `consumer` | Worker | 9 |
-| `fh.queue.message.age` | histograma (s: `SentTimestamp` → receive) | `queue` | Worker | 9 |
-| `fh.queue.dlq.depth` | gauge | `queue` | Worker (GetQueueAttributes) + CloudWatch nativo | 9/16 |
+| `fh.queue.messages.processed` / `.failed` | counter | `queue`, `consumer`, `reason` (failed) | Worker (`SqsConsumer`) | 9 ✔ |
+| `fh.queue.message.age` | histograma (s: `SentTimestamp` → receive) | `queue` | Worker (`SqsConsumer`) | 9 ✔ |
+| `fh.queue.dlq.depth` | gauge | `queue` | Worker (`GetQueueAttributes` a cada 30 s) + CloudWatch nativo | 9 ✔ /16 |
 | `fh.reconciliation.corrections` | counter | `kind` (`payment_status`, `delivery_status`) | Application (`ReconcilePaymentsHandler`, executado pelo Worker) | 5 ✔ |
 | `process.runtime.dotnet.*` (GC, threadpool, exceptions) | vários | — | nativa | 1 |
 
@@ -64,7 +64,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 |---|---|---|
 | `PlaceOrder` (e demais casos de uso) | Application | `order.id`, `customer.id` (id, não nome), `order.items.count` |
 | `Outbox <type>` | Infrastructure (`OutboxProcessor`, roda no Worker) | `messaging.message.id`, `outbox.attempt`; `ActivityKind.Consumer` com parent = `trace_parent` gravado na mensagem (o span do handler continua o trace da request que gerou o evento) — Fase 8 ✔ |
-| `Consume <queue>` | Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id` (semântica OTel messaging) |
+| `<queue> publish` / `<queue> receive` | Infrastructure/Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id`, `messaging.receive_count`; o `receive` continua o trace do `traceparent` enviado como atributo (BL-088 ✔ Fase 9); SDK instrumentado por `OpenTelemetry.Instrumentation.AWS` |
 | `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Fase 5 ✔ pagamento: `Provider CreatePayment/GetPayment/RefundPayment`; Fase 6 ✔ entrega: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
 | `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |
 | DB | Npgsql automático | statement resumido (sem valores) |

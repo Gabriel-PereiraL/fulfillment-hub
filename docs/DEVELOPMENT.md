@@ -17,7 +17,7 @@
 cd FulfillmentHub                      # nesta fase o repositório é apenas local
 dotnet --version                       # 10.0.x
 cp .env.example .env                   # ajuste POSTGRES_PASSWORD (valor local; .env é ignorado pelo Git)
-docker compose --profile deps up -d    # postgres (5432) + aspire-dashboard (UI 18888, OTLP gRPC 4317)
+docker compose --profile deps up -d    # postgres (5432) + localstack SQS (4566) + aspire-dashboard (UI 18888, OTLP gRPC 4317)
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<o mesmo do .env>" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Jwt:SigningKey" "<64 chars aleatórios, ex.: openssl rand -base64 48>" --project src/FulfillmentHub.Api
@@ -43,6 +43,8 @@ dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:510
 ```
 
 Aspire Dashboard: http://localhost:18888 (traces/logs/métricas). Os hosts exportam OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (já está em `appsettings.Development.json`).
+
+SQS (Fase 9): em Development `Messaging:Sqs:Enabled=true` aponta para o LocalStack do compose (`http://localhost:4566`, credenciais placeholder `test`/`test` — não são segredos). O Worker cria as filas `fh-domain-events`/`fh-webhooks-inbound` (+ `-dlq`) ao subir; inspecione com `docker exec fulfillmenthub-localstack-1 awslocal sqs list-queues`. Sem LocalStack, defina `Messaging__Sqs__Enabled=false`: a outbox despacha in-process e os webhooks são processados no request (mesmo comportamento, sem fila).
 
 ## 3. Comandos do dia a dia
 

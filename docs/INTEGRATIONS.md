@@ -186,9 +186,8 @@ Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulato
 
 1. Ler corpo bruto (buffer) → validar assinatura HMAC (comparação em tempo constante) e tolerância de timestamp (5 min) → 401 se inválida.
 2. Extrair `provider_event_id`; `INSERT` em `webhook_events` (`UNIQUE`) → duplicado: `200` imediato (métrica `webhook.duplicate`).
-3. Fases 6–8: processar in-process após persistir (mesmo request, mas o `200` não depende do processamento — se falhar, o worker reprocessa por varredura de `status=Received`).
-   Fase 9: publicar em `fh-webhooks-inbound` (SQS) e responder `200`.
-4. Worker aplica ao agregado com as regras de ordem (DOMAIN.md §7); marca `processed_at`; falha → `attempts++`, backoff; N falhas → `Failed` (Admin).
+3. Fase 9 ✔: publicar um ponteiro `{webhookEventId, provider}` em `fh-webhooks-inbound` e responder `200`; sem broker (ou se a publicação falhar) processar in-process no mesmo request (Fases 5–8), sempre com o `200` independente do resultado.
+4. Worker (`WebhooksInboundConsumer` → `WebhookEventProcessor` → `IWebhookProcessor` do provider) aplica ao agregado com as regras de ordem (DOMAIN.md §7) e marca `Processed/Ignored/Failed`; um evento já tratado é reconhecido sem trabalho (redelivery segura); `Failed` fica registrado no evento e a reconciliação corrige o estado.
 5. Endpoint de webhook: sem autenticação JWT (usa assinatura), rate limit próprio, tamanho máximo de corpo (64 KB), sem logar corpo completo (apenas ids/status).
 
 **Implementação (Fase 5, `POST /api/v1/webhooks/payments`)**: passos 1, 2 e 5 como descritos (`WebhookSignatureVerifier`: `CryptographicOperations.FixedTimeEquals`, tolerância `Providers:Payment:WebhookTimestampToleranceSeconds` = 300; `WebhookInbox` grava em escopo próprio antes de processar; rate limit `webhooks` 120/min por IP; corpo > 64 KB → 413). Passo 3: processamento in-process no mesmo request (`ApplyPaymentWebhookHandler`); o `200` é devolvido mesmo se o processamento falhar — o evento fica `Failed` com `last_error` e a **reconciliação** (Worker) corrige o estado consultando o provider. Eventos de tipo desconhecido ou pagamento desconhecido → `Ignored`. **D-P5 resolvida = sim**: `paid`/`refunded` são confirmados com `GET` no provider antes de serem aplicados; o status que vale é o do provider, não o do corpo do webhook (`Webhook_ClaimingPaid_IsVerifiedWithTheProvider_BeforeBeingTrusted`). A varredura de `status=Received/Failed` pelo worker (passo 4) fica para a Fase 8, junto com a outbox.
@@ -200,9 +199,9 @@ Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulato
 | Operação | Modo | Por quê |
 |---|---|---|
 | Cotação de entrega ao criar pedido | síncrona (Fase 6 ✔) | usuário precisa da taxa para confirmar; provider fora → taxa estimada (D-51), nunca 503 |
-| Criar pagamento | assíncrona (outbox `OrderPlaced`, Fase 8 ✔; in-process nas Fases 5–7) | não bloquear o `POST /orders`; retry sem o cliente esperar |
-| Criar entrega | assíncrona (outbox `OrderPaid`, Fase 8 ✔; varredura do Worker como rede de segurança) | só após pagamento; retries longos |
-| Processar webhooks | persistir → processar in-process no mesmo request (Fases 5/7); os efeitos seguintes (estorno, entrega) saem por eventos na outbox | responder ao provider em ms; o `200` não depende do processamento; reconciliação cobre falhas |
+| Criar pagamento | assíncrona (outbox `OrderPlaced` → SQS `fh-domain-events` → Worker, Fases 8–9 ✔) | não bloquear o `POST /orders`; retry sem o cliente esperar |
+| Criar entrega | assíncrona (outbox `OrderPaid` → SQS → Worker, Fases 8–9 ✔; varredura do Worker como rede de segurança) | só após pagamento; retries longos |
+| Processar webhooks | persistir → `fh-webhooks-inbound` → Worker (Fase 9 ✔; in-process como fallback); os efeitos seguintes (estorno, entrega) saem por eventos na outbox | responder ao provider em ms; o `200` não depende do processamento; reconciliação cobre falhas |
 | Cancelar entrega pelo operador/cliente | síncrona (Fase 6 ✔: cancela no provider antes de cancelar localmente; `noncancelable_delivery` → 409) | quem cancela espera a confirmação |
-| Estornar pagamento | assíncrona (outbox `OrderCancelled`/`PaymentPaid`, Fase 8 ✔) | nunca dentro de um webhook; retry até o provider aceitar |
+| Estornar pagamento | assíncrona (outbox `OrderCancelled`/`PaymentPaid` → SQS → Worker, Fases 8–9 ✔) | nunca dentro de um webhook; retry até o provider aceitar |
 | Reconciliação | job periódico | varredura de pendentes |

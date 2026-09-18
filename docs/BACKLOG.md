@@ -80,11 +80,11 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-081 | `OutboxPublisher` (`SKIP LOCKED`, lote, backoff+jitter, `Failed` após N) | 8 | P0 | done |
 | BL-082 | Handlers in-process: `OrderPlaced`→pagamento, `OrderPaid`→entrega, `OrderCancelled`→estoque/estorno | 8 | P0 | done |
 | BL-083 | Teste "crash entre commit e publicação não perde evento" | 8 | P0 | done (T12 em `OutboxTests`) |
-| BL-084 | `IMessagePublisher` SQS + filas/DLQ via LocalStack (compose init + Testcontainers) | 9 | P0 | todo |
-| BL-085 | Consumidores SQS: long polling, visibility, concorrência limitada, `processed_messages` (idempotent consumer) | 9 | P0 | todo |
-| BL-086 | Webhooks → `fh-webhooks-inbound` | 9 | P0 | todo |
-| BL-087 | Métricas: outbox lag, DLQ count, idade da mensagem, retries | 9/11 | P0 | todo |
-| BL-088 | Propagação de trace context (outbox → SQS attributes → consumer) | 11 | P0 | todo |
+| BL-084 | `IMessagePublisher` SQS + filas/DLQ via LocalStack (compose init + Testcontainers) | 9 | P0 | done |
+| BL-085 | Consumidores SQS: long polling, visibility, concorrência limitada, `processed_messages` (idempotent consumer) | 9 | P0 | done |
+| BL-086 | Webhooks → `fh-webhooks-inbound` | 9 | P0 | done (fallback in-process quando o broker está desligado/indisponível) |
+| BL-087 | Métricas: outbox lag, DLQ count, idade da mensagem, retries | 9/11 | P0 | done (Fase 9: `fh.queue.*`, `fh.outbox.*`) |
+| BL-088 | Propagação de trace context (outbox → SQS attributes → consumer) | 11 | P0 | done (Fase 9: atributo `traceparent` → span `receive` continua o trace) |
 | BL-089 | Reprocessar DLQ pela Admin (redrive) | 17 | P1 | todo |
 
 ## Security
@@ -113,7 +113,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-122 | `ActivitySource`/`Meter` do projeto; spans de casos de uso, provider calls, outbox, consumers | 5–11 | P0 | parcial (meter `FulfillmentHub` ✔; spans `Provider *Payment` ✔ Fase 5; outbox/consumers Fases 8/9) |
 | BL-246 | Métricas dedicadas de retry/circuito do provider (`fh.provider.retry.count`, `fh.provider.circuit.state`) — hoje só instrumentação padrão de `HttpClient` | 11 | P2 | todo |
 | BL-123 | Métricas de negócio/operação (OBSERVABILITY.md tabela) | 11 | P0 | todo |
-| BL-124 | Instrumentação AWS SDK (SQS) | 9 | P1 | todo |
+| BL-124 | Instrumentação AWS SDK (SQS) | 9 | P1 | done (`OpenTelemetry.Instrumentation.AWS`) |
 | BL-125 | Runbook de incidente executado localmente com evidências | 11 | P0 | todo |
 | BL-126 | Alertas CloudWatch (5xx rate, p95, DLQ > 0, outbox lag, CB aberto) | 16 | P0 | todo |
 | BL-127 | Teste: um pedido = um `trace_id` de ponta a ponta | 11 | P1 | todo |
@@ -129,7 +129,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | done (pagamento T6 Fase 5; entrega T6/T7 Fase 7) |
 | BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 5/6 | P0 | parcial (retry ✔ T9, abre ✔ T10; half-open Fase 6) |
 | BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | done |
-| BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |
+| BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | done (T14/T15 em `SqsMessagingTests`) |
 | BL-148 | E2E com compose: 3 fluxos | 12 | P0 | todo |
 | BL-149 | Testes de autorização: 401/403 por papel (Fase 3) e acesso cruzado por recurso (Fase 4) | 3/4 | P0 | done |
 | BL-150 | Convergência com `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |

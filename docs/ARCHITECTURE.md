@@ -107,7 +107,7 @@ Comunicação **entre módulos** dentro do monólito:
 | Erros | ProblemDetails (RFC 9457) + `IExceptionHandler`; `Result` pequeno para falhas esperadas; `DomainException` para invariantes | Result em todo método; exceptions para fluxo |
 | Validação | validação nativa de Minimal APIs (.NET 10, DataAnnotations) + invariantes de domínio | FluentValidation (dependência sem necessidade) |
 | Mapeamento | métodos explícitos (`ToResponse()`), projeções LINQ | AutoMapper/Mapster |
-| Eventos | domain events → outbox → worker → (SQS a partir da Fase 9) | handlers in-process com efeitos externos (dual write) |
+| Eventos | domain events → outbox → SQS → worker (Fases 8–9 ✔; in-process quando `Messaging:Sqs:Enabled=false`) | handlers in-process com efeitos externos (dual write) |
 | Consistência | outbox transacional, consumidores idempotentes, constraints no banco | 2PC, sagas com orquestrador dedicado |
 | Concorrência | otimista (`xmin`) + constraints (`CHECK`, `UNIQUE`) | locks pessimistas por padrão (só onde justificado: `SKIP LOCKED` no outbox) |
 | HTTP externo | typed `HttpClient` + `Microsoft.Extensions.Http.Resilience` | Polly v7 manual, retry cego |
@@ -123,17 +123,17 @@ Comunicação **entre módulos** dentro do monólito:
   mesma chave + hash diferente → `422`; chave em andamento → `409`. Expira em 24h.
 - **Webhooks**: `UNIQUE (provider, provider_event_id)` em `WebhookEvent`; inserção antes de qualquer efeito; duplicata → `200` sem reprocessar.
 - **Saída**: `idempotency_key` enviado ao provider de entrega na criação; chave derivada do `OrderId` (retry seguro).
-- **Consumidores**: tabela de mensagens processadas (ou o próprio `WebhookEvent.ProcessedAt`) no mesmo commit do efeito.
+- **Consumidores** (Fase 9 ✔): `processed_messages (consumer, message_id)` inserida na mesma transação do efeito (`OutboxDispatcher`); o consumidor de webhooks usa o próprio status do `WebhookEvent`.
 
 ### 5.2 Outbox transacional (ADR-004)
 - Agregados acumulam `IDomainEvent`; um `SaveChangesInterceptor` converte em `OutboxMessage` (tipo, payload JSON, `occurred_at`, trace context) **no mesmo commit**.
-- `OutboxPublisher` (Worker) lê em lote com `FOR UPDATE SKIP LOCKED`, despacha (Fase 8: handlers in-process; Fase 9: publica no SQS), marca `processed_at`;
+- `OutboxProcessor`/`OutboxPublisherService` (Worker) lê em lote com `FOR UPDATE SKIP LOCKED` + lease, publica no SQS (Fase 9 ✔; handlers in-process quando a mensageria está desligada), marca `processed_at`;
   falha → `attempts++`, `next_attempt_at` com backoff exponencial + jitter; após N → `Failed` (visível na Admin, reprocessável).
 - Garantia: **at-least-once**. Consequência: todo consumidor é idempotente.
 
 ### 5.3 Mensageria (ADR-005)
 - Filas SQS standard: `fh-domain-events` (saída do outbox), `fh-webhooks-inbound` (webhooks aceitos pela API para processamento assíncrono), cada uma com DLQ.
-- Local: **LocalStack** no compose. Testes: Testcontainers LocalStack.
+- Local: **LocalStack** no compose (perfil `deps`). Testes: Testcontainers LocalStack (`SqsMessagingTests`). Implementação: ADR-005 "Implementação" (Fase 9 ✔): `SqsConsumer` base (long polling, concorrência limitada, delete após sucesso, backoff por visibilidade), `DomainEventsConsumer`, `WebhooksInboundConsumer`, `SqsQueueProvisioner` (filas + DLQ com redrive criadas no start).
 - Quando **não** usar fila: cotação de entrega (síncrona, o usuário espera a taxa), login, consultas. Documentado por caso em INTEGRATIONS.md.
 
 ### 5.4 Resiliência
