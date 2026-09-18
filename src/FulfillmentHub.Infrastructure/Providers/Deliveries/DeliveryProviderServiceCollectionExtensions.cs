@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using FulfillmentHub.Application.Deliveries;
+using FulfillmentHub.Infrastructure.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -45,6 +46,8 @@ public static class DeliveryProviderServiceCollectionExtensions
             })
             .AddProviderResilienceHandler<DeliveryProviderOptions>(ResiliencePipelineName)
             .AddHttpMessageHandler<DeliveryBearerTokenHandler>();
+
+        services.AddKeyedScoped<IWebhookProcessor, DeliveryWebhookProcessor>(SimulatedDeliveryProviderClient.Name);
 
         return services;
     }

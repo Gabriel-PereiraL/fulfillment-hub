@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using FulfillmentHub.Application.Payments;
+using FulfillmentHub.Infrastructure.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -26,6 +27,8 @@ public static class PaymentProviderServiceCollectionExtensions
                 client.Timeout = Timeout.InfiniteTimeSpan; // timeouts are owned by the resilience pipeline
             })
             .AddProviderResilienceHandler<PaymentProviderOptions>(ResiliencePipelineName);
+
+        services.AddKeyedScoped<IWebhookProcessor, PaymentWebhookProcessor>(SimulatedPaymentGatewayClient.Name);
 
         return services;
     }
