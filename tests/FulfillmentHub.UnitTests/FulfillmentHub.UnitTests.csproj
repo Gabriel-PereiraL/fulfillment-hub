@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FulfillmentHub.Domain\FulfillmentHub.Domain.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.Worker\FulfillmentHub.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

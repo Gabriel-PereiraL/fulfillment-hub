@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FulfillmentHub.Domain\FulfillmentHub.Domain.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.Application\FulfillmentHub.Application.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.Infrastructure\FulfillmentHub.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.Api\FulfillmentHub.Api.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.Worker\FulfillmentHub.Worker.csproj" />
+    <ProjectReference Include="..\..\src\FulfillmentHub.ProviderSimulator\FulfillmentHub.ProviderSimulator.csproj" />
+  </ItemGroup>
+
+</Project>

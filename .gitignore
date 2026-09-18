@@ -1,0 +1,100 @@
+# =============================================================================
+# FulfillmentHub — .gitignore
+# Regra: nada privado da IA, nenhum secret, nenhum artefato de build entra no repositório.
+# =============================================================================
+
+# --- Privado da IA / operacional (NUNCA publicar) -----------------------------
+CLAUDE.md
+.claude/
+.ai/
+.skills/
+.cursor/
+.github/copilot-instructions.md
+AGENTS.md
+*.prompt.md
+*.transcript.*
+scratch/
+scratchpad/
+notes-private/
+
+# --- Secrets e configuração local ---------------------------------------------
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+!**/certs/README.md
+aws-credentials*
+.aws/
+terraform.tfvars
+*.auto.tfvars
+!example.tfvars
+
+# --- Dumps, dados e artefatos sensíveis ---------------------------------------
+*.sql.gz
+*.dump
+*.bak
+*.csv.private
+/data/
+/dumps/
+
+# --- .NET build --------------------------------------------------------------
+bin/
+obj/
+out/
+publish/
+artifacts/
+TestResults/
+*.trx
+coverage/
+coverage.*.xml
+*.coverage
+*.snupkg
+*.nupkg
+!**/packages/**/*.nupkg
+BenchmarkDotNet.Artifacts/
+.dotnet/
+*.binlog
+
+# --- IDEs ----------------------------------------------------------------------
+.vs/
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json.example
+.idea/
+*.user
+*.suo
+*.swp
+*.DotSettings.User
+*~
+
+# --- Terraform (fase futura) -------------------------------------------------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- Docker / local ----------------------------------------------------------
+docker-compose.override.yml
+.localstack/
+volume/
+volumes/
+
+# --- Node (caso a Admin UI precise de tooling) --------------------------------
+node_modules/
+
+# --- Sistema operacional -----------------------------------------------------
+Thumbs.db
+Desktop.ini
+.DS_Store

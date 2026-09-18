@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FulfillmentHub.Domain\FulfillmentHub.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Deliberate dependency (ADR-006): use cases query through IFulfillmentHubDbContext with LINQ/EF Core. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+
+</Project>

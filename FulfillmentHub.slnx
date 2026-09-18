@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FulfillmentHub.Api/FulfillmentHub.Api.csproj" />
+    <Project Path="src/FulfillmentHub.Application/FulfillmentHub.Application.csproj" />
+    <Project Path="src/FulfillmentHub.Domain/FulfillmentHub.Domain.csproj" />
+    <Project Path="src/FulfillmentHub.Infrastructure/FulfillmentHub.Infrastructure.csproj" />
+    <Project Path="src/FulfillmentHub.ProviderSimulator/FulfillmentHub.ProviderSimulator.csproj" />
+    <Project Path="src/FulfillmentHub.Worker/FulfillmentHub.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FulfillmentHub.ArchitectureTests/FulfillmentHub.ArchitectureTests.csproj" />
+    <Project Path="tests/FulfillmentHub.IntegrationTests/FulfillmentHub.IntegrationTests.csproj" />
+    <Project Path="tests/FulfillmentHub.UnitTests/FulfillmentHub.UnitTests.csproj" />
+  </Folder>
+</Solution>
