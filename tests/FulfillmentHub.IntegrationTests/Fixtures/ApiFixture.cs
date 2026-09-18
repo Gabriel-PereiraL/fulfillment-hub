@@ -28,7 +28,7 @@ namespace FulfillmentHub.IntegrationTests.Fixtures;
 /// (<see cref="ProviderSimulatorFactory"/>) reachable through the API's payment <c>HttpClient</c>.
 /// Shared by every test in the <see cref="ApiTests"/> collection (one container per test run).
 /// </summary>
-public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string EnvironmentName = "Testing";
     public const string JwtIssuer = "fulfillmenthub-tests";
@@ -54,7 +54,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Pause/drive the outbox publisher hosted in the test API.</summary>
     public OutboxControl Outbox => Services.GetRequiredService<OutboxControl>();
 
-    public async ValueTask InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         await _postgres.StartAsync();
 
@@ -69,6 +69,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         await _simulator.DisposeAsync();
         await base.DisposeAsync();
         await _postgres.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>A client with its own IP address, so per-client rate limits never bleed between tests.</summary>
@@ -124,29 +125,30 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(EnvironmentName);
-        builder.ConfigureAppConfiguration(configuration =>
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Database:ConnectionString"] = _postgres.GetConnectionString(),
-                ["Jwt:Issuer"] = JwtIssuer,
-                ["Jwt:Audience"] = JwtAudience,
-                ["Jwt:SigningKey"] = JwtSigningKey,
-                ["Providers:Payment:BaseUrl"] = "http://provider.test",
-                ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
-                ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
-                ["Providers:Payment:RetryBaseDelayMs"] = "10",
-                ["Providers:Payment:CircuitBreakDurationSeconds"] = "1",
-                ["Providers:Delivery:BaseUrl"] = "http://provider.test",
-                ["Providers:Delivery:ClientId"] = ProviderSimulatorFactory.DeliveryClientId,
-                ["Providers:Delivery:ClientSecret"] = ProviderSimulatorFactory.DeliveryClientSecret,
-                ["Providers:Delivery:CustomerId"] = ProviderSimulatorFactory.DeliveryCustomerId,
-                ["Providers:Delivery:WebhookSigningKey"] = ProviderSimulatorFactory.DeliveryWebhookSigningKey,
-                ["Providers:Delivery:RetryBaseDelayMs"] = "10",
-                ["Providers:Delivery:CircuitBreakDurationSeconds"] = "1",
-                ["Outbox:MaxAttempts"] = "3",
-                ["Outbox:BaseDelaySeconds"] = "1",
-                ["Outbox:MaxDelaySeconds"] = "2",
-            }));
+        var settings = new Dictionary<string, string?>
+        {
+            ["Database:ConnectionString"] = _postgres.GetConnectionString(),
+            ["Jwt:Issuer"] = JwtIssuer,
+            ["Jwt:Audience"] = JwtAudience,
+            ["Jwt:SigningKey"] = JwtSigningKey,
+            ["Providers:Payment:BaseUrl"] = "http://provider.test",
+            ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
+            ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
+            ["Providers:Payment:RetryBaseDelayMs"] = "10",
+            ["Providers:Payment:CircuitBreakDurationSeconds"] = "1",
+            ["Providers:Delivery:BaseUrl"] = "http://provider.test",
+            ["Providers:Delivery:ClientId"] = ProviderSimulatorFactory.DeliveryClientId,
+            ["Providers:Delivery:ClientSecret"] = ProviderSimulatorFactory.DeliveryClientSecret,
+            ["Providers:Delivery:CustomerId"] = ProviderSimulatorFactory.DeliveryCustomerId,
+            ["Providers:Delivery:WebhookSigningKey"] = ProviderSimulatorFactory.DeliveryWebhookSigningKey,
+            ["Providers:Delivery:RetryBaseDelayMs"] = "10",
+            ["Providers:Delivery:CircuitBreakDurationSeconds"] = "1",
+            ["Outbox:MaxAttempts"] = "3",
+            ["Outbox:BaseDelaySeconds"] = "1",
+            ["Outbox:MaxDelaySeconds"] = "2",
+        };
+        ConfigureSettings(settings);
+        builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(settings));
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IStartupFilter, TestClientAddressMiddleware.StartupFilter>();
@@ -163,7 +165,19 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddHttpClient<IPaymentGatewayClient, SimulatedPaymentGatewayClient>().ConfigurePrimaryHttpMessageHandler(ToSimulator);
             services.AddHttpClient<IDeliveryProviderClient, SimulatedDeliveryProviderClient>().ConfigurePrimaryHttpMessageHandler(ToSimulator);
             services.AddHttpClient(DeliveryAccessTokenProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(ToSimulator);
+
+            ConfigureTestServices(services);
         });
+    }
+
+    /// <summary>Hook for derived fixtures (e.g. the SQS-backed one) to add or override settings.</summary>
+    protected virtual void ConfigureSettings(IDictionary<string, string?> settings)
+    {
+    }
+
+    /// <summary>Hook for derived fixtures to register extra test-host services.</summary>
+    protected virtual void ConfigureTestServices(IServiceCollection services)
+    {
     }
 
     private HttpMessageHandler ToSimulator() => new ProviderOutage.Handler(_providerOutage) { InnerHandler = _simulator.Server.CreateHandler() };
