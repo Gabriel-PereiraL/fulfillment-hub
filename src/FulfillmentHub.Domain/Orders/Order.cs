@@ -121,6 +121,27 @@ public sealed class Order : AggregateRoot<OrderId>
         return order;
     }
 
+    /// <summary>
+    /// Freezes the delivery fee charged to the customer, quoted at checkout (D-51). Only before payment: the amount
+    /// charged must include it. What the provider actually costs later lives on the <c>Delivery</c>.
+    /// </summary>
+    public void SetDeliveryFee(Money deliveryFee, DateTimeOffset now)
+    {
+        if (Status != OrderStatus.Created)
+        {
+            throw new DomainException($"Delivery fee can only be set before payment (status is '{Status}').");
+        }
+
+        if (deliveryFee.IsNegative)
+        {
+            throw new DomainException("Delivery fee cannot be negative.");
+        }
+
+        DeliveryFee = deliveryFee;
+        Total = Subtotal + deliveryFee;
+        UpdatedAt = now;
+    }
+
     /// <summary>A payment was created at the provider; the order now waits for its confirmation.</summary>
     public void MarkAwaitingPayment(PaymentId paymentId, DateTimeOffset now)
     {

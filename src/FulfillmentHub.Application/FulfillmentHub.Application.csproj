@@ -7,6 +7,8 @@
   <ItemGroup>
     <!-- Deliberate dependency (ADR-006): use cases query through IFulfillmentHubDbContext with LINQ/EF Core. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <!-- Use cases read host-bound settings (FulfillmentOriginOptions) through IOptions; binding/validation stays in the hosts. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
 </Project>

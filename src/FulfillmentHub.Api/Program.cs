@@ -7,6 +7,7 @@ using FulfillmentHub.Api.Webhooks;
 using FulfillmentHub.Application;
 using FulfillmentHub.Infrastructure.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Providers.Deliveries;
 using FulfillmentHub.Infrastructure.Providers.Payments;
 using FulfillmentHub.Infrastructure.Seeding;
 using FulfillmentHub.Infrastructure.Telemetry;
@@ -26,6 +27,7 @@ builder.AddFulfillmentHubTelemetry("fulfillmenthub-api")
 builder.Services.AddFulfillmentHubPersistence();
 builder.Services.AddFulfillmentHubIdentity();
 builder.Services.AddFulfillmentHubPaymentProvider();
+builder.Services.AddFulfillmentHubDeliveryProvider();
 builder.Services.AddFulfillmentHubApplication();
 builder.Services.AddFulfillmentHubIdentityApplication();
 builder.Services.TryAddSingleton(TimeProvider.System);

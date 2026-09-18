@@ -1,5 +1,6 @@
 using FulfillmentHub.Application.Common;
 using FulfillmentHub.Application.Common.Persistence;
+using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Domain.Catalog;
 using FulfillmentHub.Domain.Common;
@@ -18,6 +19,7 @@ namespace FulfillmentHub.Application.Orders;
 public sealed partial class PlaceOrderHandler(
     IFulfillmentHubDbContext db,
     ICurrentUser currentUser,
+    CheckoutDeliveryQuoter deliveryQuoter,
     OrdersMetrics metrics,
     TimeProvider timeProvider,
     ILogger<PlaceOrderHandler> logger)
@@ -58,6 +60,14 @@ public sealed partial class PlaceOrderHandler(
             return Failure.Validation("order.invalid_address", exception.Message);
         }
 
+        // D-51: the delivery is quoted at checkout so the customer pays the real fee; the provider being down does not
+        // block the order (estimated fee). Runs before the transaction: never call a provider while holding row locks.
+        var quoted = await deliveryQuoter.QuoteAsync(new DeliveryParty(customer.Name, deliveryAddress, customer.Phone), cancellationToken);
+        if (!quoted.IsSuccess)
+        {
+            return quoted.Failure;
+        }
+
         var productIds = command.Lines.Select(l => ProductId.From(l.ProductId)).ToList();
 
         for (var attempt = 1; attempt <= MaxReservationAttempts; attempt++)
@@ -79,6 +89,7 @@ public sealed partial class PlaceOrderHandler(
             {
                 var now = timeProvider.GetUtcNow();
                 order = Order.Place(customer, deliveryAddress, lines, command.IdempotencyKey, now);
+                order.SetDeliveryFee(quoted.Value.Fee, now);
 
                 foreach (var line in lines)
                 {
@@ -96,6 +107,10 @@ public sealed partial class PlaceOrderHandler(
             }
 
             db.Orders.Add(order);
+            if (quoted.Value.Quote is { } providerQuote)
+            {
+                db.DeliveryQuotes.Add(CheckoutDeliveryQuoter.ToAggregate(order.Id, deliveryQuoter.ProviderName, providerQuote, timeProvider.GetUtcNow()));
+            }
 
             try
             {

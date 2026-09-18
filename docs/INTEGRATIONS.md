@@ -1,5 +1,3 @@
-**Implementação (Fase 5, pagamento)**: `AddFulfillmentHubPaymentProvider()` — typed client `IPaymentGatewayClient` com `Microsoft.Extensions.Http.Resilience` (`AddResilienceHandler("payment-provider")`): timeout total (`Providers:Payment:TotalTimeoutSeconds`, 15) → retry (`MaxRetryAttempts` 3, base `RetryBaseDelayMs` 500, exponencial + jitter, honra `Retry-After`; predicado exatamente o da tabela; `0` desliga o retry) → circuit breaker (50 % / 30 s / mín. 10 / aberto 30 s) → timeout por tentativa (`AttemptTimeoutSeconds`, 5). `HttpClient.Timeout` fica infinito: os timeouts pertencem à pipeline. O `Idempotency-Key` enviado é `Payment.ProviderIdempotencyKey` (estável por pagamento, então retries e a reconciliação nunca criam um segundo pagamento no provider). Falhas de transporte/timeout/circuito aberto viram `Failure.Unavailable("provider.unavailable")`; 4xx de contrato viram `Validation/Forbidden/NotFound/Conflict` e **não** são repetidos. Token: não se aplica (API key estática). Telemetria: spans `Provider CreatePayment/GetPayment/RefundPayment` + instrumentação padrão de `HttpClient` (duração/status por tentativa); métricas dedicadas de retry/circuito ficaram para a Fase 11 (BL-246). Evidência: `PaymentGatewayClientTests` (T9/T10).
-
 # INTEGRATIONS — providers externos (simulados)
 
 > **This project does not connect to Uber infrastructure or to any real payment provider.**
@@ -117,6 +115,26 @@ Cada transição gera um webhook. O simulator persiste estado em memória (ou SQ
 
 Rota administrativa do simulator (`POST /admin/scenario`) permite mudar o cenário em tempo de execução (testes E2E e demonstrações).
 
+### 2.4 Implementação (Fase 6, 2026-09-18)
+
+Rotas (`FulfillmentHub.ProviderSimulator/Deliveries`), com a mesma pipeline de caos das rotas de pagamento (`Simulator:Chaos`, 429 com código `customer_limited`):
+
+| Operação | Método/path | Notas |
+|---|---|---|
+| Token | `POST /delivery/oauth/token` (form: `client_id`, `client_secret`, `grant_type=client_credentials`, `scope`) | `{ access_token, token_type: "Bearer", expires_in, scope }`; credenciais erradas → `401 { error: "invalid_client" }`; token opaco com `TokenLifetimeSeconds` (300 — curto de propósito, exercita a renovação) |
+| Cotação | `POST /delivery/v1/customers/{customer_id}/delivery_quotes` | `pickup_address`/`dropoff_address` são **strings JSON** de `{ street_address[], city, state, zip_code, country }` (como no contrato real); resposta `{ kind: "delivery_quote", id: "dqt_…", created, expires, fee, currency: "brl", currency_type: "BRL", dropoff_eta, duration, pickup_duration, dropoff_deadline }` |
+| Criar entrega | `POST …/deliveries` | `quote_id`, `idempotency_key`, `external_id`, `manifest_items[]`, nomes/telefones/endereços; resposta `{ kind: "delivery", id: "del_…", quote_id, status, complete, courier, courier_imminent, created, updated, currency, fee, tracking_url, pickup_eta, dropoff_eta, external_id, manifest_reference, live_mode: false, uuid, undeliverable_reason }` |
+| Consultar / cancelar | `GET …/deliveries/{id}`, `POST …/deliveries/{id}/cancel` | cancelar só em `pending`/`pickup`; depois → `400 noncancelable_delivery` |
+| Erros | `{ code, message, kind: "error", metadata? }` | `400 invalid_params / address_undeliverable / expired_quote / used_quote / noncancelable_delivery`, `401 unauthorized`, `404 customer_not_found / delivery_not_found`, `409 duplicate_delivery` (+ `metadata.delivery_id`; mesma `idempotency_key` dentro do TTL **ou** `external_id` com entrega ativa), `429 customer_limited` (+ `Retry-After`), `503 couriers_busy` (`CouriersBusyRate`), `500` (caos) |
+
+Ciclo de vida: `pending` → (`CourierAssignMs`) `pickup` (courier fictício atribuído) → (`StepMs`) `pickup_complete` → `dropoff` → `delivered`; cada transição gera um `event.delivery_status` (`{ id, kind, created, status, delivery_id, customer_id, live_mode, data: <entrega> }`) assinado em **`X-Uber-Signature`** (HMAC-SHA256 hex) + `X-Timestamp` para `Simulator:Delivery:WebhookUrl` — vazio na Fase 6 (o endpoint receptor chega na Fase 7).
+
+**Regras de sandbox pelo CEP de entrega** (`zip_code`): começa com `00000` → `address_undeliverable` (cotação e criação); últimos dígitos `001` → cotação com validade de **1 s** (força `expired_quote`/recotação); `002` → a entrega termina em `returned`. Taxa determinística por CEP em reais inteiros (`BaseFeeCents` + 100 × (soma dos dígitos mod 8)), para não interferir nos valores sandbox do pagamento.
+
+**Configuração** (`Simulator:Delivery`): `ClientId`, `ClientSecret` (≥ 8), `CustomerId` (`cus_sim_fulfillmenthub`), `TokenLifetimeSeconds` 300, `WebhookSigningKey` (≥ 16), `WebhookUrl?`, `QuoteTtlSeconds` 900, `CourierAssignMs` 1000, `StepMs` 3000, `BaseFeeCents` 1200, `CouriersBusyRate` 0, `WebhookDuplicateRate` 0, `WebhookDelayMs` 0, `WebhookOutOfOrder` false, `IdempotencyTtlMinutes` 60. Valores dev-only em `appsettings.Development.json`. Não implementado: rota admin `POST /admin/scenario` (BL-066), `WebhookFailFirstN` (BL-245).
+
+**Lado FulfillmentHub** (`Providers:Delivery:*` + `Fulfillment:Origin:*`): `IDeliveryProviderClient` → `SimulatedDeliveryProviderClient` com a pipeline compartilhada (§4) **por fora** e `DeliveryBearerTokenHandler` **por dentro** (`DeliveryAccessTokenProvider`: cache do token, renovação `TokenRefreshSkewSeconds` antes de expirar, 401 → renova uma vez e repete); erros 4xx viram `Failure` com `provider.<code>`, `409` traz `Metadata["delivery_id"]`. Fluxo: cotação no checkout (D-51, `CheckoutDeliveryQuoter`; provider fora → taxa estimada) → após `Paid` o Worker (`DeliveryRequestService`, D-52) chama `RequestDeliveryHandler`: reusa a cotação válida, recota **uma** vez se expirou (segunda expiração → `delivery.quote_expired`, pedido fica `Paid` para o operador), cria com `idempotency_key` durável (`order-{id}-delivery-{n}`), `409 duplicate_delivery` → `GET` e adota, rejeição permanente (`address_undeliverable`, `invalid_params`) → pedido `Cancelled(DeliveryFailed)` + estoque devolvido. Cancelamento do pedido com entrega ativa cancela no provider primeiro; `noncancelable_delivery` → `409 order.delivery_in_progress`.
+
 ## 3. Provider de pagamento simulado (rotas `/payments/v1/...`) — IMPLEMENTADO (Fase 5, 2026-09-18)
 
 Contrato **próprio e minimalista**, inspirado no ciclo de vida comum de PSPs (intent → autorização → captura → estorno) — **não** modela nenhum PSP específico. Autenticação: `Authorization: Bearer <api key>` (`Simulator:Payments:ApiKey`); JSON em `snake_case`.
@@ -147,7 +165,7 @@ Contrato **próprio e minimalista**, inspirado no ciclo de vida comum de PSPs (i
 | `WebhookDelayMs` | atraso antes do envio | 0 |
 | `IdempotencyTtlMinutes` | TTL da `Idempotency-Key` | 60 |
 
-Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulator): `LatencyMs`, `LatencyJitterMs`, `FailureRate` (500 aleatório), `TimeoutRate` (request "some"), `RateLimitPerMinute` (0 = desligado). Estado em memória (D-P8 resolvida); reiniciar limpa tudo.
+Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulator): `LatencyMs`, `LatencyJitterMs`, `FailureRate` (500 aleatório), `TimeoutRate` (request "some"), `RateLimitPerMinute` (janela fixa compartilhada; 0 = desligado; 429 + `Retry-After` com o código de cada provider — `rate_limited` / `customer_limited`; implementado na Fase 6). Estado em memória (D-P8 resolvida); reiniciar limpa tudo.
 
 ## 4. Política de resiliência das chamadas de saída
 
@@ -161,6 +179,8 @@ Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulato
 | Idempotência de POST | `idempotency_key`/`Idempotency-Key` sempre presente em criações |
 | Token | cache em memória com renovação antecipada; 401 → renovar uma vez e repetir |
 | Telemetria | span por chamada (`peer.service`, status, tentativa), métricas `provider.request.duration`, `provider.retry.count`, `provider.circuit.state` |
+
+**Implementação (Fase 5, pagamento; Fase 6 extraiu a pipeline para `AddProviderResilienceHandler<TOptions>` compartilhada com o delivery client, opções base `ProviderResilienceOptions` + `CircuitBreakDurationSeconds`)**: `AddFulfillmentHubPaymentProvider()` — typed client `IPaymentGatewayClient` com `Microsoft.Extensions.Http.Resilience`: timeout total (`Providers:Payment:TotalTimeoutSeconds`, 15) → retry (`MaxRetryAttempts` 3, base `RetryBaseDelayMs` 500, exponencial + jitter, honra `Retry-After`; predicado exatamente o da tabela; `0` desliga o retry) → circuit breaker (50 % / 30 s / mín. 10 / aberto 30 s) → timeout por tentativa (`AttemptTimeoutSeconds`, 5). `HttpClient.Timeout` fica infinito: os timeouts pertencem à pipeline. O `Idempotency-Key` enviado é `Payment.ProviderIdempotencyKey` (estável por pagamento, então retries e a reconciliação nunca criam um segundo pagamento no provider). Falhas de transporte/timeout/circuito aberto viram `Failure.Unavailable("provider.unavailable")`; 4xx de contrato viram `Validation/Forbidden/NotFound/Conflict` e **não** são repetidos. Token: não se aplica ao pagamento (API key estática); no delivery, `DeliveryAccessTokenProvider` + `DeliveryBearerTokenHandler` (Fase 6, §2.4). Telemetria: spans `Provider CreatePayment/GetPayment/RefundPayment` + instrumentação padrão de `HttpClient` (duração/status por tentativa); métricas dedicadas de retry/circuito ficaram para a Fase 11 (BL-246). Evidência: `PaymentGatewayClientTests` (T9/T10).
 
 ## 5. Ingestão de webhooks (entrada)
 

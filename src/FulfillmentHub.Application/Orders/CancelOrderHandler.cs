@@ -1,5 +1,6 @@
 using FulfillmentHub.Application.Common;
 using FulfillmentHub.Application.Common.Persistence;
+using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Domain.Orders;
@@ -13,12 +14,14 @@ public sealed record CancelOrderCommand(Guid OrderId, string? Note);
 /// <summary>
 /// Cancels an order and returns its reserved stock in the same transaction. Customers can only cancel their own
 /// orders (others look non-existent, D-18) and only while the rules for <c>CustomerRequest</c> allow it; operators
-/// and administrators cancel with <c>OperatorAction</c>. Refund/provider cancellation are driven by the
-/// <c>OrderCancelled</c> event in later phases.
+/// and administrators cancel with <c>OperatorAction</c>. An active delivery is cancelled at the provider first (the
+/// provider refuses once the courier has the parcel → 409). Refunds are driven by the <c>OrderCancelled</c> event in
+/// later phases (BL-244).
 /// </summary>
 public sealed partial class CancelOrderHandler(
     IFulfillmentHubDbContext db,
     ICurrentUser currentUser,
+    IDeliveryProviderClient deliveryProvider,
     OrdersMetrics metrics,
     TimeProvider timeProvider,
     ILogger<CancelOrderHandler> logger)
@@ -55,14 +58,30 @@ public sealed partial class CancelOrderHandler(
         }
 
         var now = timeProvider.GetUtcNow();
+
+        if (order.DeliveryId is { } deliveryId)
+        {
+            var delivery = await db.Deliveries.SingleAsync(d => d.Id == deliveryId, cancellationToken);
+
+            if (delivery.IsActive && delivery.ProviderDeliveryId is { } providerDeliveryId)
+            {
+                var cancelled = await deliveryProvider.CancelAsync(providerDeliveryId, cancellationToken);
+
+                if (!cancelled.IsSuccess)
+                {
+                    LogProviderCancelFailed(order.Id, cancelled.Failure.Code);
+                    return cancelled.Failure.Code == "provider.noncancelable_delivery"
+                        ? Failure.Conflict("order.delivery_in_progress", "The courier already has the parcel; the delivery can no longer be cancelled.")
+                        : cancelled.Failure;
+                }
+
+                delivery.Cancel(now);
+            }
+        }
+
         order.Cancel(reason, now, currentUser.UserId, command.Note);
 
-        var productIds = order.Items.Select(i => i.ProductId).ToList();
-        var products = await db.Products.Where(p => productIds.Contains(p.Id)).ToListAsync(cancellationToken);
-        foreach (var item in order.Items)
-        {
-            products.Single(p => p.Id == item.ProductId).Release(item.Quantity, now);
-        }
+        await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -74,4 +93,7 @@ public sealed partial class CancelOrderHandler(
 
     [LoggerMessage(EventId = 4010, Level = LogLevel.Information, Message = "Order {OrderId} cancelled ({Reason})")]
     private partial void LogOrderCancelled(OrderId orderId, OrderCancellationReason reason);
+
+    [LoggerMessage(EventId = 4011, Level = LogLevel.Warning, Message = "Provider refused to cancel the delivery of order {OrderId} ({Code})")]
+    private partial void LogProviderCancelFailed(OrderId orderId, string code);
 }

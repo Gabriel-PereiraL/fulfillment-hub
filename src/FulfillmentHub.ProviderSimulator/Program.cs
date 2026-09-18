@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FulfillmentHub.ProviderSimulator.Common;
+using FulfillmentHub.ProviderSimulator.Deliveries;
 using FulfillmentHub.ProviderSimulator.Payments;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Json;
@@ -46,13 +47,18 @@ public sealed class Program
 
         builder.Services.AddOptions<ChaosOptions>().BindConfiguration(ChaosOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
         builder.Services.AddOptions<PaymentSimulatorOptions>().BindConfiguration(PaymentSimulatorOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        builder.Services.AddOptions<DeliverySimulatorOptions>().BindConfiguration(DeliverySimulatorOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
 
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddHttpClient(WebhookDispatcher.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddSingleton<ChaosRateLimiter>();
         builder.Services.AddSingleton<WebhookOutbox>();
         builder.Services.AddHostedService<WebhookDispatcher>();
         builder.Services.AddSingleton<PaymentSimulatorStore>();
         builder.Services.AddHostedService<PaymentSettlementService>();
+        builder.Services.AddSingleton<DeliverySimulatorStore>();
+        builder.Services.AddSingleton<DeliveryTokenIssuer>();
+        builder.Services.AddHostedService<DeliveryLifecycleService>();
 
         builder.Services.AddValidation();
         builder.Services.AddProblemDetails();
@@ -65,6 +71,7 @@ public sealed class Program
 
         app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
         app.MapPaymentSimulatorEndpoints();
+        app.MapDeliverySimulatorEndpoints();
 
         app.Run();
     }

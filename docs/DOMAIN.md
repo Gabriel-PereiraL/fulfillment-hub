@@ -237,6 +237,9 @@ Divergências e precisões em relação às seções acima, decididas ao impleme
 | Reserva de estoque | "reserva com concorrência otimista" | `Product.Reserve/Release` + `xmin` (`IsRowVersion` em `uint "xmin"`) + `CHECK stock_quantity >= 0` | teste de integração prova o conflito (`DbUpdateConcurrencyException`) |
 | IDs | `readonly record struct` | idem + `IStronglyTypedId<TSelf>` (static abstract `From`) e `StronglyTypedIdConverter<TId>` registrado em `ConfigureConventions` | um conversor para todos os IDs |
 | Nomes no banco | `snake_case` | `EFCore.NamingConventions` (`UseSnakeCaseNamingConvention`) — inclusive colunas de `__EFMigrationsHistory` | D-29 |
-| Registros de infraestrutura (§9) | listados | **ainda não criados** (outbox/webhook/idempotência/audit chegam nas fases 4, 5 e 8) | escopo da Fase 2 = agregados |
+| Registros de infraestrutura (§9) | listados | `idempotency_records` (Fase 4), `webhook_events` (Fase 5); outbox/audit na Fase 8 | escopo da Fase 2 = agregados |
+| Taxa de entrega (§3 `DeliveryFee`, D-P3) | "preenchida após cotação" | **cotada no checkout** (D-51): `Order.SetDeliveryFee` só em `Created`, entra no `Total` e no valor do pagamento; `MarkDeliveryRequested` mantém a taxa cobrada; o custo real do provider fica em `Delivery.Fee`; provider indisponível → taxa estimada configurada | o cliente sabe o que paga antes de pagar |
+| Origem da coleta | não modelada | configuração `Fulfillment:Origin` (uma loja), sem agregado `Store` (D-51) | fora de escopo multi-loja |
+| `Delivery` `Requested` nunca confirmada | — | é cancelada (`Delivery.Cancel`) quando uma nova tentativa com nova cotação a substitui (D-55); a última tentativa fica `Requested` com a `idempotency_key` para a próxima varredura | |
 
 Invariantes de §10: todas cobertas por testes de unidade (`tests/FulfillmentHub.UnitTests/Domain/*`) e, onde o banco participa, por testes de integração (`tests/FulfillmentHub.IntegrationTests/Persistence/*`).

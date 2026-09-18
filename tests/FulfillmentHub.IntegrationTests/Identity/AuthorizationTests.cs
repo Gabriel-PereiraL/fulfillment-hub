@@ -86,6 +86,11 @@ public sealed class AuthorizationTests(ApiFixture api)
                     ["Providers:Payment:BaseUrl"] = "http://provider.test",
                     ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
                     ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
+                    ["Providers:Delivery:BaseUrl"] = "http://provider.test",
+                    ["Providers:Delivery:ClientId"] = ProviderSimulatorFactory.DeliveryClientId,
+                    ["Providers:Delivery:ClientSecret"] = ProviderSimulatorFactory.DeliveryClientSecret,
+                    ["Providers:Delivery:CustomerId"] = ProviderSimulatorFactory.DeliveryCustomerId,
+                    ["Providers:Delivery:WebhookSigningKey"] = ProviderSimulatorFactory.DeliveryWebhookSigningKey,
                 }));
         }
     }

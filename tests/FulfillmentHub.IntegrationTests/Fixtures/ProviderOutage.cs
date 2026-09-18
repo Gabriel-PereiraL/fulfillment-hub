@@ -4,8 +4,9 @@ using System.Text;
 namespace FulfillmentHub.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Test switch that makes the payment provider "unreachable" from the API's point of view: while enabled every call
-/// gets a 503 without reaching the simulator. Lets tests exercise the retry/reconciliation paths deterministically.
+/// Test switch in front of every provider call the API/Worker makes. <see cref="Enabled"/> makes providers
+/// "unreachable" (503 without reaching the simulator); <see cref="Script"/> lets a test answer specific requests
+/// itself (e.g. force <c>expired_quote</c>). Both are reset by the tests that use them.
 /// </summary>
 public sealed class ProviderOutage
 {
@@ -17,22 +18,33 @@ public sealed class ProviderOutage
         set => Volatile.Write(ref _enabled, value ? 1 : 0);
     }
 
+    /// <summary>Returns a canned response for a request, or null to let it through to the simulator.</summary>
+    public Func<HttpRequestMessage, HttpResponseMessage?>? Script { get; set; }
+
     public int RejectedCalls { get; private set; }
+
+    public static HttpResponseMessage ProviderError(HttpStatusCode status, string code, string message = "scripted by the test") =>
+        new(status)
+        {
+            Content = new StringContent($$"""{"code":"{{code}}","message":"{{message}}","kind":"error"}""", Encoding.UTF8, "application/json"),
+        };
 
     internal sealed class Handler(ProviderOutage outage) : DelegatingHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (!outage.Enabled)
+            if (outage.Enabled)
             {
-                return base.SendAsync(request, cancellationToken);
+                outage.RejectedCalls++;
+                return Task.FromResult(ProviderError(HttpStatusCode.ServiceUnavailable, "service_unavailable", "simulated outage"));
             }
 
-            outage.RejectedCalls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            if (outage.Script?.Invoke(request) is { } scripted)
             {
-                Content = new StringContent("""{"code":"service_unavailable","message":"simulated outage","kind":"error"}""", Encoding.UTF8, "application/json"),
-            });
+                return Task.FromResult(scripted);
+            }
+
+            return base.SendAsync(request, cancellationToken);
         }
     }
 }

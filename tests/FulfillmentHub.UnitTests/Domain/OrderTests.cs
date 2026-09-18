@@ -34,6 +34,41 @@ public sealed class OrderTests
     }
 
     [Fact]
+    public void SetDeliveryFee_BeforePayment_RecalculatesTotal()
+    {
+        var order = TestData.Order((TestData.Product(price: 10m), 2));
+
+        order.SetDeliveryFee(Money.Of(7.5m), Now);
+
+        order.DeliveryFee.ShouldBe(Money.Of(7.5m));
+        order.Total.ShouldBe(Money.Of(27.5m));
+        order.Subtotal.ShouldBe(Money.Of(20m));
+    }
+
+    [Theory]
+    [InlineData(OrderStatus.AwaitingPayment)]
+    [InlineData(OrderStatus.Paid)]
+    [InlineData(OrderStatus.Cancelled)]
+    public void SetDeliveryFee_AfterPaymentStarted_Throws(OrderStatus status)
+    {
+        var order = TestData.OrderIn(status);
+
+        var act = () => order.SetDeliveryFee(Money.Of(7.5m), Now);
+
+        act.ShouldThrow<DomainException>();
+    }
+
+    [Fact]
+    public void SetDeliveryFee_Negative_Throws()
+    {
+        var order = TestData.Order((TestData.Product(), 1));
+
+        var act = () => order.SetDeliveryFee(Money.Of(-1m), Now);
+
+        act.ShouldThrow<DomainException>();
+    }
+
+    [Fact]
     public void Place_WithoutItems_Throws()
     {
         var act = () => Order.Place(TestData.Customer(), TestData.Address(), [], null, Now);

@@ -1,12 +1,14 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Application.Payments;
 using FulfillmentHub.Domain.Common;
 using FulfillmentHub.Domain.Customers;
 using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Providers.Deliveries;
 using FulfillmentHub.Infrastructure.Providers.Payments;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -128,6 +130,12 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Providers:Payment:ApiKey"] = ProviderSimulatorFactory.ApiKey,
                 ["Providers:Payment:WebhookSigningKey"] = ProviderSimulatorFactory.WebhookSigningKey,
                 ["Providers:Payment:RetryBaseDelayMs"] = "10",
+                ["Providers:Delivery:BaseUrl"] = "http://provider.test",
+                ["Providers:Delivery:ClientId"] = ProviderSimulatorFactory.DeliveryClientId,
+                ["Providers:Delivery:ClientSecret"] = ProviderSimulatorFactory.DeliveryClientSecret,
+                ["Providers:Delivery:CustomerId"] = ProviderSimulatorFactory.DeliveryCustomerId,
+                ["Providers:Delivery:WebhookSigningKey"] = ProviderSimulatorFactory.DeliveryWebhookSigningKey,
+                ["Providers:Delivery:RetryBaseDelayMs"] = "10",
             }));
         builder.ConfigureTestServices(services =>
         {
@@ -137,10 +145,13 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
             // The API reaches the simulator hosted in-process: the full HTTP pipeline of both hosts runs, without sockets.
-            services.AddHttpClient<IPaymentGatewayClient, SimulatedPaymentGatewayClient>()
-                .ConfigurePrimaryHttpMessageHandler(() => new ProviderOutage.Handler(_providerOutage) { InnerHandler = _simulator.Server.CreateHandler() });
+            services.AddHttpClient<IPaymentGatewayClient, SimulatedPaymentGatewayClient>().ConfigurePrimaryHttpMessageHandler(ToSimulator);
+            services.AddHttpClient<IDeliveryProviderClient, SimulatedDeliveryProviderClient>().ConfigurePrimaryHttpMessageHandler(ToSimulator);
+            services.AddHttpClient(DeliveryAccessTokenProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(ToSimulator);
         });
     }
+
+    private HttpMessageHandler ToSimulator() => new ProviderOutage.Handler(_providerOutage) { InnerHandler = _simulator.Server.CreateHandler() };
 
     private static string RandomLoopbackAddress()
     {

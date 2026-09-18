@@ -19,7 +19,8 @@ public static class PaymentSimulatorEndpoints
         var group = app.MapGroup("/payments/v1")
             .WithTags("Payments simulator")
             .AddEndpointFilter<ApiKeyFilter>()
-            .AddEndpointFilter<ChaosFilter>();
+            .AddEndpointFilter<ChaosFilter>()
+            .WithMetadata(new RateLimitErrorCode("rate_limited"));
 
         group.MapPost("/payments", CreatePayment).WithName("SimulatorCreatePayment");
         group.MapGet("/payments/{id}", GetPayment).WithName("SimulatorGetPayment");

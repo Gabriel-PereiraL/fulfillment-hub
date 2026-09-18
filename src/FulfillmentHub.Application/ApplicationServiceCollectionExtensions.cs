@@ -1,4 +1,5 @@
 using FulfillmentHub.Application.Catalog;
+using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Application.Orders;
 using FulfillmentHub.Application.Payments;
@@ -26,6 +27,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<CreatePaymentForOrderHandler>();
         services.AddScoped<ApplyPaymentWebhookHandler>();
         services.AddScoped<ReconcilePaymentsHandler>();
+
+        services.AddSingleton<DeliveriesMetrics>();
+        services.AddScoped<CheckoutDeliveryQuoter>();
+        services.AddScoped<RequestDeliveryHandler>();
+        services.AddScoped<RequestPendingDeliveriesHandler>();
 
         return services;
     }

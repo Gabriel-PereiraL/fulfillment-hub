@@ -16,6 +16,10 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
     public const string ApiKey = "integration-tests-payment-api-key";
     public const string WebhookSigningKey = "integration-tests-webhook-signing-key";
     public const string WebhookUrl = "http://api.test/api/v1/webhooks/payments";
+    public const string DeliveryClientId = "integration-tests-delivery-client";
+    public const string DeliveryClientSecret = "integration-tests-delivery-secret";
+    public const string DeliveryCustomerId = "cus_sim_tests";
+    public const string DeliveryWebhookSigningKey = "integration-tests-delivery-signing-key";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -28,6 +32,13 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
                 ["Simulator:Payments:WebhookUrl"] = WebhookUrl,
                 ["Simulator:Payments:SettleDelayMs"] = "100",
                 ["Simulator:Payments:ApprovalRate"] = "1",
+                ["Simulator:Delivery:ClientId"] = DeliveryClientId,
+                ["Simulator:Delivery:ClientSecret"] = DeliveryClientSecret,
+                ["Simulator:Delivery:CustomerId"] = DeliveryCustomerId,
+                ["Simulator:Delivery:WebhookSigningKey"] = DeliveryWebhookSigningKey,
+                ["Simulator:Delivery:WebhookUrl"] = "",
+                ["Simulator:Delivery:CourierAssignMs"] = "100",
+                ["Simulator:Delivery:StepMs"] = "200",
             }));
         builder.ConfigureTestServices(services =>
             services.AddHttpClient(WebhookDispatcher.HttpClientName)

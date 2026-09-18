@@ -27,6 +27,13 @@ dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --
 dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Providers:Payment:ApiKey" "dev-only-payment-api-key" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Providers:Payment:WebhookSigningKey" "dev-only-payment-webhook-signing-key" --project src/FulfillmentHub.Worker
+# Provider de entrega (Fase 6): idem, valores dev-only de src/FulfillmentHub.ProviderSimulator/appsettings.Development.json (Simulator:Delivery)
+dotnet user-secrets set "Providers:Delivery:ClientId" "dev-only-delivery-client-id" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Providers:Delivery:ClientSecret" "dev-only-delivery-client-secret" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Providers:Delivery:WebhookSigningKey" "dev-only-delivery-webhook-signing-key" --project src/FulfillmentHub.Api
+dotnet user-secrets set "Providers:Delivery:ClientId" "dev-only-delivery-client-id" --project src/FulfillmentHub.Worker
+dotnet user-secrets set "Providers:Delivery:ClientSecret" "dev-only-delivery-client-secret" --project src/FulfillmentHub.Worker
+dotnet user-secrets set "Providers:Delivery:WebhookSigningKey" "dev-only-delivery-webhook-signing-key" --project src/FulfillmentHub.Worker
 dotnet tool restore                    # dotnet-ef (manifest em .config/dotnet-tools.json)
 dotnet ef database update --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
 dotnet run --project src/FulfillmentHub.Api -- seed       # dados fictícios de desenvolvimento (só Development; usuários admin@/operator@/customer.local)
@@ -54,7 +61,7 @@ Os testes usam o Microsoft.Testing.Platform (`global.json` → `test.runner`): u
 ## 4. Configuração e segredos
 
 - `appsettings.json` (defaults sem segredos) → `appsettings.Development.json` (portas, níveis de log) → **user-secrets** (dev) → variáveis de ambiente (containers/AWS).
-- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` têm defaults em appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (só para o comando `seed`), `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:ApiKey`/`WebhookSigningKey` (Fase 5; `BaseUrl` tem default `http://localhost:5100`), `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Nunca commitar segredo. `.env.example` documenta as variáveis do compose. Lista de chaves esperadas: `Database:ConnectionString` (Fase 1), `Jwt:SigningKey` (secret, ≥ 32 chars; `Jwt:Issuer`/`Audience` têm defaults em appsettings), `Seed:AdminPassword`/`OperatorPassword`/`CustomerPassword` (só para o comando `seed`), `Providers:Delivery:BaseUrl`, `Providers:Delivery:ClientId/ClientSecret` (fake), `Providers:Delivery:WebhookSigningKey` (fake), `Providers:Payment:ApiKey`/`WebhookSigningKey` (Fase 5), `Providers:Delivery:ClientId`/`ClientSecret`/`WebhookSigningKey` (Fase 6; `BaseUrl`/`CustomerId` têm defaults), `Fulfillment:Origin:*` (endereço da loja fictícia, em `appsettings.json`), `Messaging:Sqs:*` (Fase 9), `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - Options tipadas com `ValidateOnStart`: a aplicação **não sobe** com configuração inválida — é intencional.
 
 ## 5. Convenções de código
@@ -80,3 +87,4 @@ Ver `.editorconfig` (Fase 1) e a skill principal (privada). Resumo público: C# 
 - Pedido fica `Created` (não `AwaitingPayment`): o simulator não está de pé ou `Providers:Payment:ApiKey` não bate — ver log 5101 da Api; a reconciliação do Worker recria o pagamento quando o provider voltar.
 - Pedido fica `AwaitingPayment` para sempre: webhook não chegou (URL/chave do simulator) — ver `Simulator:Payments:WebhookUrl`/`WebhookSigningKey` e o log 5200 da Api; o Worker corrige em até `Worker:Reconciliation:PendingForSeconds`.
 - Smoke rápido do fluxo de pagamento: valor com centavos `…99` recusa (pedido cancelado, estoque devolvido); `…98` aprova sem webhook (só a reconciliação resolve).
+- Pedido `Paid` sem entrega: o Worker precisa estar rodando (`Worker:DeliveryRequests:IntervalSeconds`, 10 s); ver logs 6010–6015. CEP `00000-000` é recusado no checkout (400); CEP terminado em `001` força recotação (cotação de 1 s); `002` faz a entrega voltar (`returned`).

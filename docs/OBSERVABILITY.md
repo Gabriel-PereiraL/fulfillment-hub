@@ -45,6 +45,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `fh.provider.circuit_state` | gauge (0/1/2) | `provider` | Polly telemetry | 11 (BL-246) |
 | `fh.webhooks.received` / `.rejected` / `.duplicates` / `.out_of_order` | counter | `provider`, `event_type` (received), `reason` (rejected) | Api (`PaymentsMetrics`) | 5 ✔ (`received/rejected/duplicates`); `out_of_order` Fase 7 |
 | `fh.payments.settled` | counter | `status` (`paid`, `failed`, `paid_after_cancellation`) | Application (`PaymentStatusApplier`) | 5 ✔ |
+| `fh.deliveries.quotes` / `fh.deliveries.requested` | counter | `outcome` (`quoted`, `fallback_fee`, `rejected`, `requoted` / `created`, `adopted`, `adopted_duplicate`, `deferred`, `rejected`, `quote_expired_twice`) | Application (`DeliveriesMetrics`) | 6 ✔ |
 | `fh.webhooks.processing.duration` | histograma | `provider` | Worker | 7 |
 | `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | Worker (poll) | 8 |
 | `fh.outbox.lag` | histograma (s: `now - occurred_at` ao publicar) | `type` | Worker | 8 |
@@ -62,7 +63,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `PlaceOrder` (e demais casos de uso) | Application | `order.id`, `customer.id` (id, não nome), `order.items.count` |
 | `Outbox.Publish` | Worker | `outbox.message.id`, `outbox.type`, `outbox.attempt` |
 | `Consume <queue>` | Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id` (semântica OTel messaging) |
-| `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Fase 5 ✔ para pagamento: `Provider CreatePayment/GetPayment/RefundPayment` (`SimulatedPaymentGatewayClient`, `ActivitySource` "FulfillmentHub") |
+| `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Fase 5 ✔ pagamento: `Provider CreatePayment/GetPayment/RefundPayment`; Fase 6 ✔ entrega: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
 | `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |
 | DB | Npgsql automático | statement resumido (sem valores) |
 

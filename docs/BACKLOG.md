@@ -58,10 +58,12 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 |---|---|---|---|---|
 | BL-060 | Simulator de pagamento `/payments/v1` (contrato INTEGRATIONS §3, cenários, webhooks assinados) | 5 | P0 | done |
 | BL-061 | `IPaymentGatewayClient` typed client + resiliência + idempotência | 5 | P0 | done |
-| BL-062 | Simulator de entrega `/delivery/v1` (token, quote, create, get, cancel, erros, ciclo de vida, webhooks) | 6 | P0 | todo |
-| BL-063 | `IDeliveryProviderClient` + pipeline (timeout/retry/CB) + matriz de retry testada | 6 | P0 | todo |
-| BL-064 | Recotação em `expired_quote`; reconciliação em `409 duplicate_delivery` | 6 | P0 | todo |
-| BL-065 | Cenários do simulator: latência, failure rate, timeout, 429+Retry-After, 503 couriers_busy, webhook duplicado/atrasado/fora de ordem, `SIM_FORCE_STATUS` | 6–7 | P0 | todo |
+| BL-062 | Simulator de entrega `/delivery/v1` (token, quote, create, get, cancel, erros, ciclo de vida, webhooks) | 6 | P0 | done |
+| BL-063 | `IDeliveryProviderClient` + pipeline (timeout/retry/CB) + matriz de retry testada | 6 | P0 | done |
+| BL-064 | Recotação em `expired_quote`; reconciliação em `409 duplicate_delivery` | 6 | P0 | done |
+| BL-065 | Cenários do simulator: latência, failure rate, timeout, 429+Retry-After, 503 couriers_busy, webhook duplicado/atrasado/fora de ordem, `SIM_FORCE_STATUS` | 6–7 | P0 | parcial (latência, failure rate, timeout, 429 + `Retry-After`, `couriers_busy`, duplicado/atraso ✔; fora de ordem só emissão; `SIM_FORCE_STATUS` → BL-066 rota admin) |
+| BL-247 | Cobrar a diferença (ou estornar) quando a taxa cotada no checkout difere do custo real da entrega — hoje a loja absorve (D-51) | 17+ | P3 | todo |
+| BL-248 | Varredura de entregas `Requested` órfãs sem pedido `Paid` (ex.: pedido cancelado entre a criação local e a confirmação) — hoje só logs | 8 | P2 | todo |
 | BL-066 | Rota admin do simulator (`POST /admin/scenario`) | 7 | P1 | todo |
 | BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | parcial (pagamentos ✔ Fase 5: `PaymentReconciliationService`; entregas Fase 8) |
 | BL-244 | Estorno automático quando o provider captura após o cliente cancelar (`paid_after_cancellation`) — hoje só log 5002 + métrica | 8 | P1 | todo |

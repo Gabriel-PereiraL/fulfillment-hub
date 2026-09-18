@@ -80,7 +80,7 @@ public sealed partial class WebhookDispatcher(
         };
 
         var timestamp = timeProvider.GetUtcNow().ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
-        request.Headers.Add(SignatureHeader, Sign(webhook.SigningKey, webhook.Body));
+        request.Headers.Add(webhook.SignatureHeader, Sign(webhook.SigningKey, webhook.Body));
         request.Headers.Add(TimestampHeader, timestamp);
         request.Headers.Add(EventIdHeader, webhook.EventId);
 

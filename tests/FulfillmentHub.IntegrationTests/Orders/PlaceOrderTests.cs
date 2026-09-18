@@ -27,8 +27,8 @@ public sealed class PlaceOrderTests(ApiFixture api)
         order.Status.ShouldBe("AwaitingPayment", "the payment is initiated with the simulated provider right after the order is committed");
         order.PaymentId.ShouldNotBeNull();
         order.Subtotal.Amount.ShouldBe(39.8m);
-        order.Total.Amount.ShouldBe(39.8m);
-        order.DeliveryFee.ShouldBeNull();
+        order.DeliveryFee.ShouldNotBeNull("the delivery is quoted at checkout (D-51)");
+        order.Total.Amount.ShouldBe(39.8m + order.DeliveryFee.Amount);
         order.Items.ShouldHaveSingleItem().Sku.ShouldBe(product.Sku);
 
         (await GetStockAsync(api, product.Id)).ShouldBe(3);
@@ -173,7 +173,8 @@ public sealed class PlaceOrderTests(ApiFixture api)
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var order = await response.Content.ReadFromJsonAsync<OrderDto>(TestContext.Current.CancellationToken);
         order!.Status.ShouldBe("AwaitingPayment");
-        order.Total.Amount.ShouldBe(10m);
+        order.Subtotal.Amount.ShouldBe(10m);
+        order.Total.Amount.ShouldBe(10m + order.DeliveryFee!.Amount);
         order.CustomerId.ShouldNotBe((Guid)body.customerId);
     }
 

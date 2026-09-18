@@ -36,7 +36,9 @@ internal static class OrdersTestSupport
         return await db.Orders.AsNoTracking().CountAsync(o => o.Items.Any(i => i.ProductId == productId));
     }
 
-    public static object OrderBody(params (Guid ProductId, int Quantity)[] items) => new
+    public static object OrderBody(params (Guid ProductId, int Quantity)[] items) => OrderBody("50000-000", items);
+
+    public static object OrderBody(string postalCode, params (Guid ProductId, int Quantity)[] items) => new
     {
         items = items.Select(i => new { productId = i.ProductId, quantity = i.Quantity }).ToArray(),
         deliveryAddress = new
@@ -47,7 +49,7 @@ internal static class OrdersTestSupport
             district = "Centro",
             city = "Recife",
             state = "PE",
-            postalCode = "50000-000",
+            postalCode,
             country = "BR",
         },
     };

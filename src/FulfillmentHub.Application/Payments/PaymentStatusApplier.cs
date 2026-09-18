@@ -1,4 +1,5 @@
 using FulfillmentHub.Application.Common.Persistence;
+using FulfillmentHub.Application.Orders;
 using FulfillmentHub.Domain.Orders;
 using FulfillmentHub.Domain.Payments;
 using Microsoft.EntityFrameworkCore;
@@ -66,7 +67,7 @@ public sealed partial class PaymentStatusApplier(IFulfillmentHubDbContext db, Pa
                 if (order.CanCancel(OrderCancellationReason.PaymentFailed))
                 {
                     order.Cancel(OrderCancellationReason.PaymentFailed, now, actor: null, note: failureCode);
-                    await ReleaseStockAsync(order, now, cancellationToken);
+                    await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
                 }
 
                 metrics.PaymentSettled("failed");
@@ -82,17 +83,6 @@ public sealed partial class PaymentStatusApplier(IFulfillmentHubDbContext db, Pa
         }
 
         return true;
-    }
-
-    private async Task ReleaseStockAsync(Order order, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var productIds = order.Items.Select(i => i.ProductId).ToList();
-        var products = await db.Products.Where(p => productIds.Contains(p.Id)).ToListAsync(cancellationToken);
-
-        foreach (var item in order.Items)
-        {
-            products.Single(p => p.Id == item.ProductId).Release(item.Quantity, now);
-        }
     }
 
     [LoggerMessage(EventId = 5000, Level = LogLevel.Information, Message = "Payment {PaymentId} for order {OrderId} is now {Status}")]

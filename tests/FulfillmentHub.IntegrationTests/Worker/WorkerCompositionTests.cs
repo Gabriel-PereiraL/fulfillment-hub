@@ -21,6 +21,19 @@ public sealed class WorkerCompositionTests
             ["Providers:Payment:BaseUrl"] = "http://provider.test",
             ["Providers:Payment:ApiKey"] = "unused",
             ["Providers:Payment:WebhookSigningKey"] = "unused-signing-key-16",
+            ["Providers:Delivery:BaseUrl"] = "http://provider.test",
+            ["Providers:Delivery:ClientId"] = "unused",
+            ["Providers:Delivery:ClientSecret"] = "unused",
+            ["Providers:Delivery:CustomerId"] = "unused",
+            ["Providers:Delivery:WebhookSigningKey"] = "unused-signing-key-16",
+            ["Fulfillment:Origin:Name"] = "Test store",
+            ["Fulfillment:Origin:Phone"] = "+5581999990001",
+            ["Fulfillment:Origin:Street"] = "Rua A",
+            ["Fulfillment:Origin:Number"] = "1",
+            ["Fulfillment:Origin:District"] = "Centro",
+            ["Fulfillment:Origin:City"] = "Recife",
+            ["Fulfillment:Origin:State"] = "PE",
+            ["Fulfillment:Origin:PostalCode"] = "50000-000",
         });
 
         builder.AddFulfillmentHubWorker();
@@ -36,6 +49,7 @@ public sealed class WorkerCompositionTests
 
         hostedServices.ShouldContain(service => service is HeartbeatService);
         hostedServices.ShouldContain(service => service is PaymentReconciliationService);
+        hostedServices.ShouldContain(service => service is DeliveryRequestService);
     }
 
     [Fact]

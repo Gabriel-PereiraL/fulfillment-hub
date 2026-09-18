@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Text;
 using FulfillmentHub.Application.Common;
 using FulfillmentHub.Application.Payments;
 using FulfillmentHub.Domain.Common;
 using FulfillmentHub.Domain.Payments;
 using FulfillmentHub.Infrastructure.Providers.Payments;
+using FulfillmentHub.UnitTests.Support;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -164,46 +164,5 @@ public sealed class PaymentGatewayClientTests
             .ConfigurePrimaryHttpMessageHandler(() => transport);
 
         return services.BuildServiceProvider();
-    }
-
-    private sealed record RecordedRequest(HttpMethod Method, Uri? Uri, HttpRequestHeaders Headers, string Body);
-
-    /// <summary>Answers scripted responses in order and records what was sent.</summary>
-    private sealed class ScriptedTransport : HttpMessageHandler
-    {
-        private readonly Queue<(HttpStatusCode Status, string Body, int? RetryAfter)> _responses = new();
-
-        public List<RecordedRequest> Requests { get; } = [];
-
-        public TimeSpan Delay { get; init; }
-
-        public ScriptedTransport Respond(HttpStatusCode status, string body, int? retryAfterSeconds = null)
-        {
-            _responses.Enqueue((status, body, retryAfterSeconds));
-            return this;
-        }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new RecordedRequest(request.Method, request.RequestUri, request.Headers, body));
-
-            if (Delay > TimeSpan.Zero)
-            {
-                await Task.Delay(Delay, cancellationToken);
-            }
-
-            var (status, responseBody, retryAfter) = _responses.Count > 0
-                ? _responses.Dequeue()
-                : (HttpStatusCode.InternalServerError, """{"code":"unscripted","message":"no scripted response"}""", null);
-
-            var response = new HttpResponseMessage(status) { Content = new StringContent(responseBody, Encoding.UTF8, "application/json") };
-            if (retryAfter is { } seconds)
-            {
-                response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(seconds));
-            }
-
-            return response;
-        }
     }
 }

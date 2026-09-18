@@ -13,6 +13,9 @@ public enum FailureKind
 /// <summary>An expected failure of a use case. Unexpected failures are exceptions.</summary>
 public sealed record Failure(string Code, string Message, FailureKind Kind)
 {
+    /// <summary>Extra structured data some failures carry (e.g. the existing resource id on a provider conflict).</summary>
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
     public static Failure Validation(string code, string message) => new(code, message, FailureKind.Validation);
 
     public static Failure NotFound(string code, string message) => new(code, message, FailureKind.NotFound);
