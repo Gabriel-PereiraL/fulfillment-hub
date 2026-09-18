@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FulfillmentHub.Api.Middleware;
+using FulfillmentHub.Domain.Identity;
 using FulfillmentHub.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,9 +11,20 @@ namespace FulfillmentHub.IntegrationTests.Api;
 public sealed class RequestPipelineTests(ApiFixture api)
 {
     [Fact]
-    public async Task UnknownRoute_ReturnsProblemDetails()
+    public async Task UnknownRoute_ForAnonymousCaller_Returns401_NotRevealingRoutes()
     {
         using var client = api.CreateClient();
+
+        var response = await client.GetAsync("/does-not-exist", TestContext.Current.CancellationToken);
+
+        // The fallback policy applies even without a matched endpoint: anonymous callers learn nothing about routes.
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task UnknownRoute_ForAuthenticatedCaller_ReturnsProblemDetails404()
+    {
+        using var client = await api.CreateAuthenticatedClientAsync([Role.Customer]);
 
         var response = await client.GetAsync("/does-not-exist", TestContext.Current.CancellationToken);
 

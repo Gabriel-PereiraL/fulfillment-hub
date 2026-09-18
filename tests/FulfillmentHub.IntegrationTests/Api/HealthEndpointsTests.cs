@@ -55,6 +55,9 @@ public sealed class HealthEndpointsTests(ApiFixture api)
                 {
                     // Port 1 is closed: the connection is refused immediately instead of timing out.
                     ["Database:ConnectionString"] = "Host=127.0.0.1;Port=1;Database=none;Username=none;Password=none;Timeout=2",
+                    ["Jwt:Issuer"] = ApiFixture.JwtIssuer,
+                    ["Jwt:Audience"] = ApiFixture.JwtAudience,
+                    ["Jwt:SigningKey"] = ApiFixture.JwtSigningKey,
                 }));
         }
     }

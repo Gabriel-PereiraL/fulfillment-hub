@@ -1,6 +1,9 @@
 using FulfillmentHub.Api.ErrorHandling;
+using FulfillmentHub.Api.Identity;
 using FulfillmentHub.Api.Middleware;
+using FulfillmentHub.Infrastructure.Identity;
 using FulfillmentHub.Infrastructure.Persistence;
+using FulfillmentHub.Infrastructure.Seeding;
 using FulfillmentHub.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -16,8 +19,11 @@ builder.AddFulfillmentHubTelemetry("fulfillmenthub-api")
     .WithMetrics(metrics => metrics.AddAspNetCoreInstrumentation());
 
 builder.Services.AddFulfillmentHubPersistence();
+builder.Services.AddFulfillmentHubIdentity();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
+builder.Services.AddFulfillmentHubApiSecurity();
+builder.Services.AddValidation();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
@@ -25,20 +31,44 @@ builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<FulfillmentHubDbContext>("postgres", tags: ["ready"]);
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddFulfillmentHubDevelopmentSeeding();
+}
+
 var app = builder.Build();
+
+// `dotnet run -- seed`: writes fictional development data and exits. Never part of the normal startup path.
+if (args is ["seed"])
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException("Seeding is only available in the Development environment.");
+    }
+
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<DevelopmentSeeder>().SeedAsync(CancellationToken.None);
+    return;
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference().AllowAnonymous();
 }
 
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
+
+app.MapAuthEndpoints();
+app.MapUsersEndpoints();
 
 app.Run();
 
