@@ -1,5 +1,6 @@
 using FulfillmentHub.Domain.Common;
 using FulfillmentHub.Domain.Orders;
+using FulfillmentHub.Domain.Payments.Events;
 
 namespace FulfillmentHub.Domain.Payments;
 
@@ -147,6 +148,7 @@ public sealed class Payment : AggregateRoot<PaymentId>
                 break;
             case PaymentStatus.Paid:
                 Transition(PaymentStatus.Paid, now);
+                Raise(new PaymentPaid(Id, OrderId, now));
                 break;
             case PaymentStatus.Failed:
                 Fail(failureReason ?? "Provider reported failure", now);

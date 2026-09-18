@@ -2,8 +2,12 @@ using FulfillmentHub.Application.Catalog;
 using FulfillmentHub.Application.Deliveries;
 using FulfillmentHub.Application.Identity;
 using FulfillmentHub.Application.Orders;
+using FulfillmentHub.Application.Outbox;
+using FulfillmentHub.Application.Outbox.Handlers;
 using FulfillmentHub.Application.Payments;
 using FulfillmentHub.Application.Webhooks;
+using FulfillmentHub.Domain.Orders.Events;
+using FulfillmentHub.Domain.Payments.Events;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FulfillmentHub.Application;
@@ -37,6 +41,13 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<DeliveryStatusApplier>();
         services.AddScoped<ApplyDeliveryWebhookHandler>();
         services.AddScoped<ReconcileDeliveriesHandler>();
+
+        services.AddScoped<RefundPaymentHandler>();
+        services.AddSingleton<OutboxMetrics>();
+        services.AddKeyedScoped<IOutboxHandler, OrderPlacedHandler>(nameof(OrderPlaced));
+        services.AddKeyedScoped<IOutboxHandler, OrderPaidHandler>(nameof(OrderPaid));
+        services.AddKeyedScoped<IOutboxHandler, OrderCancelledHandler>(nameof(OrderCancelled));
+        services.AddKeyedScoped<IOutboxHandler, PaymentPaidHandler>(nameof(PaymentPaid));
 
         return services;
     }

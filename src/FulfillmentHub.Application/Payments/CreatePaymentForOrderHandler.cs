@@ -14,7 +14,7 @@ public sealed record CreatePaymentForOrderCommand(Guid OrderId);
 /// unique per active order (partial index) and the provider receives a key derived from the order id, so a retry
 /// after a timeout can never charge twice. A permanent provider failure cancels the order and returns its stock;
 /// a transient one leaves the payment pending for reconciliation to retry.
-/// Called in-process after <c>PlaceOrder</c> until Phase 8 moves it behind the outbox.
+/// Triggered by the <c>OrderPlaced</c> outbox message (Phase 8) and by payment reconciliation.
 /// </summary>
 public sealed partial class CreatePaymentForOrderHandler(
     IFulfillmentHubDbContext db,

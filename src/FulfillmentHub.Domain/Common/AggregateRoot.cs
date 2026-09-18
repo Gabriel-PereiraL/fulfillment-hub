@@ -3,7 +3,7 @@ namespace FulfillmentHub.Domain.Common;
 /// <summary>
 /// Aggregate roots collect domain events; persistence turns them into outbox messages in the same commit (ADR-004).
 /// </summary>
-public abstract class AggregateRoot<TId> : Entity<TId>
+public abstract class AggregateRoot<TId> : Entity<TId>, IAggregateRoot
     where TId : struct, IEquatable<TId>
 {
     private readonly List<IDomainEvent> _domainEvents = [];
