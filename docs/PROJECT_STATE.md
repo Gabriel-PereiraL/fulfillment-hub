@@ -48,10 +48,10 @@ Próxima fase: **Fase 10 — Security hardening** (não iniciada). Repositório 
 D-P1 idioma final da doc · D-P2 Admin separado · D-P4 k6/NBomber · D-P6 rede AWS dev · D-P7 estado Terraform.
 
 ## Testes atuais
-- 217 testes verdes (~50 s a quente). Matriz TEST_STRATEGY: T1–T11 ✔, T16–T18 ✔; T12/T13 são o alvo da Fase 8.
+- 225 testes verdes (125 unit, 5 architecture, 95 integration; ~1,5 min a quente — duas fixtures com containers: Postgres e Postgres+LocalStack). Matriz TEST_STRATEGY: T1–T18 ✔ (T19 trace ponta a ponta → Fase 11; T20 caos → Fase 12).
 
 ## Infra atual
-- Local: compose (Postgres 17 + Aspire Dashboard); banco com 6 migrations (`OutboxMessages`, `ProcessedMessages` aplicadas); compose com Postgres + LocalStack (SQS) + Aspire Dashboard e seed; user-secrets da Api/Worker: `Database:ConnectionString`, `Jwt:SigningKey` (Api), `Seed:*Password` (Api), `Providers:Payment:*`, `Providers:Delivery:*`. Remote `origin` = https://github.com/Gabriel-PereiraL/fullfillmentHub (branch `main`); nenhuma conta/recurso AWS.
+- Local: banco com 6 migrations (`OutboxMessages`, `ProcessedMessages` aplicadas); compose com Postgres + LocalStack (SQS) + Aspire Dashboard e seed; user-secrets da Api/Worker: `Database:ConnectionString`, `Jwt:SigningKey` (Api), `Seed:*Password` (Api), `Providers:Payment:*`, `Providers:Delivery:*`. Remote `origin` = https://github.com/Gabriel-PereiraL/fullfillmentHub (branch `main`); nenhuma conta/recurso AWS.
 
 ## Skills privadas disponíveis
 - `.claude/skills/` — 41 skills (ver `.ai/SKILLS_INDEX.md`). Obrigatória para C#: `fulfillmenthub-dotnet`.

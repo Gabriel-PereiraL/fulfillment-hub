@@ -14,16 +14,16 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 | 2 | Domínio e banco | **done (2026-09-18)** | Gate 2 |
 | 3 | Identity + Auth (JWT, roles) | **done (2026-09-18)** | Gate 3 |
 | 4 | Orders (API + idempotência + concorrência de estoque) | **done (2026-09-18)** | Gate 4 |
-| 5 | Payments (simulator + integração + webhook + reconciliação) | todo | Gate 5 |
-| 6 | Delivery provider simulator (Uber-like) + integração de saída resiliente | todo | Gate 6 |
-| 7 | Webhooks de entrega + idempotência + eventos fora de ordem | todo | Gate 7 |
-| 8 | Transactional outbox + Worker | todo | Gate 8 |
-| 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | todo | Gate 9 |
+| 5 | Payments (simulator + integração + webhook + reconciliação) | **done (2026-09-18)** | Gate 5 |
+| 6 | Delivery provider simulator (Uber-like) + integração de saída resiliente | **done (2026-09-18)** | Gate 6 |
+| 7 | Webhooks de entrega + idempotência + eventos fora de ordem | **done (2026-09-18)** | Gate 7 |
+| 8 | Transactional outbox + Worker | **done (2026-09-18)** | Gate 8 |
+| 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | **done (2026-09-18)** | Gate 9 |
 | 10 | Security hardening (threat model, OWASP, rate limit, headers, secrets) | todo | Gate 10 |
 | 11 | Observability hardening (métricas, traces, dashboards locais, runbook) | todo | Gate 11 |
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | todo | Gate 12 |
 | 13 | Docker images + compose completo | todo | Gate 13 |
-| 14 | CI (GitHub Actions) — **requer autorização para GitHub** | todo | Gate 14 |
+| 14 | CI (GitHub Actions) — repositório público já existe; workflow ainda não | todo | Gate 14 |
 | 15 | AWS IaC (Terraform) — **requer conta AWS/autorização de custo** | todo | Gate 15 |
 | 16 | Cloud deployment (ECS Fargate, RDS, SQS, Secrets, CloudWatch alerts) | todo | Gate 16 |
 | 17 | Admin/Ops UI (Blazor) | todo | Gate 17 |

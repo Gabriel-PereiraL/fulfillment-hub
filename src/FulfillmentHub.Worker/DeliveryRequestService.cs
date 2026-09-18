@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace FulfillmentHub.Worker;
 
-/// <summary>Requests a delivery for every paid order that has none yet (D-52: a poll stands in for the outbox until Phase 8).</summary>
+/// <summary>Safety-net sweep behind the <c>OrderPaid</c> outbox handler: requests a delivery for any paid order still without one (D-68).</summary>
 public sealed class DeliveryRequestService(
     IServiceScopeFactory scopeFactory,
     IOptions<DeliveryRequestOptions> options,

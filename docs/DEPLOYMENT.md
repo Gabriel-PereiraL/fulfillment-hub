@@ -1,7 +1,7 @@
 # DEPLOYMENT — FulfillmentHub
 
 Como o sistema é empacotado, publicado e operado por ambiente. Fases 13 (Docker), 14 (CI), 15 (Terraform), 16 (cloud).
-Nesta Fase 0 nada é executado externamente: **sem GitHub, sem AWS, sem push.**
+Escrito na Fase 0 (nada executado externamente). Desde 2026-09-18 o código está publicado em https://github.com/Gabriel-PereiraL/fullfillmentHub (push manual, autorizado); CI/CD, imagens e AWS continuam futuras (Fases 13–16).
 
 ## 1. Ambientes
 

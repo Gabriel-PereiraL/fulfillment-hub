@@ -8,8 +8,8 @@ namespace FulfillmentHub.Application.Deliveries;
 public sealed record DeliveryRequestSummary(int Candidates, int Requested, int Deferred);
 
 /// <summary>
-/// Finds paid orders without a delivery and requests one for each (D-52: the Worker polls until the outbox of
-/// Phase 8 replaces the poll). One order's failure never stops the batch.
+/// Finds paid orders without a delivery and requests one for each: the safety net behind the <c>OrderPaid</c> outbox
+/// handler (D-68), so a parked message never leaves a paid order without a delivery. One order's failure never stops the batch.
 /// </summary>
 public sealed partial class RequestPendingDeliveriesHandler(
     IFulfillmentHubDbContext db,

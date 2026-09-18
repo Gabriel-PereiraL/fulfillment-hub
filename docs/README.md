@@ -24,7 +24,7 @@
 
 1. C#/.NET é a stack principal. 2. Backend é o foco. 3. Sem microserviços por estética. 4. Sem Kubernetes. 5. Sem complexidade sem necessidade.
 6. Integrações externas são simuladas. 7. Isso é sempre explícito. 8. Nenhuma chamada comercial/real sem autorização. 9. Nenhum secret em código.
-10. Nenhum push sem autorização. 11. Sem GitHub na primeira fase. 12. Skills e memória da IA nunca entram no repositório público.
+10. Nenhum push sem autorização explícita. 11. Publicado no GitHub a partir da Fase 9 (histórico preservado). 12. Skills e memória da IA nunca entram no repositório público.
 13. Documentação antes da implementação. 14. PROJECT_STATE sempre atualizado. 15. Todo dia há um próximo passo claro.
 16. Testes validam comportamento. 17. Segurança e observabilidade são requisitos, não pós-projeto. 18. AWS é aprendida operando.
 19. O projeto permanece executável durante a evolução. 20. Não mentir no portfólio.

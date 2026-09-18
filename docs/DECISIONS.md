@@ -114,5 +114,5 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-P6 | Rede AWS em dev: NAT / VPC endpoints / subnets públicas | A / B / C | C em dev com flag para B | Fase 15 |
 | D-P7 | Estado do Terraform | local / S3+DynamoDB | S3+DynamoDB (bootstrap manual) | Fase 15 |
 | D-P8 | ~~Simulator persiste estado em memória ou SQLite~~ — **resolvida em 2026-09-18 (D-43): memória** | — | — | — |
-| D-P9 | ~~`git init` local~~ — **resolvida em 2026-09-18**: repositório local criado na Fase 1 (branch `main`, sem remote) | — | — | — |
+| D-P9 | ~~`git init` local~~ — **resolvida em 2026-09-18**: repositório local criado na Fase 1 (branch `main`); remote `origin` = GitHub público adicionado após a Fase 9 com autorização explícita, histórico preservado | — | — | — |
 | D-P10 | ~~Versionamento de API~~ — **resolvida em 2026-09-18**: prefixo fixo `/api/v1` em todos os grupos, sem biblioteca de versioning | — | — | — |

@@ -26,8 +26,8 @@ public enum DeliveryRequestOutcome
 /// <summary>
 /// Creates the delivery for a paid order: reuses the checkout quote while valid, requotes once when it expired, creates
 /// the delivery with a durable idempotency key, reconciles <c>409 duplicate_delivery</c> by adopting the existing
-/// delivery, and moves the order to <c>DeliveryRequested</c>. Runs from the Worker (D-52); Phase 8 moves the trigger
-/// behind the outbox. Permanent provider rejections cancel the order (<c>DeliveryFailed</c>) and release stock.
+/// delivery, and moves the order to <c>DeliveryRequested</c>. Triggered by the <c>OrderPaid</c> outbox message and, as a
+/// safety net, by the Worker's periodic sweep (D-52/D-68). Permanent provider rejections cancel the order (<c>DeliveryFailed</c>) and release stock.
 /// </summary>
 public sealed partial class RequestDeliveryHandler(
     IFulfillmentHubDbContext db,
