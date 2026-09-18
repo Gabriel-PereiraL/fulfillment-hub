@@ -18,7 +18,7 @@ of the API and the worker.
 | Admin UI | operators/admins | privilege escalation, CSRF (Blazor Server), data exposure |
 | Database / queue / secrets | infrastructure | leaked credentials, unintended network access |
 | Dependency chain | NuGet, base images | known vulnerabilities |
-| Repository | public | secrets or private files leaked into the history |
+| Repository | public | secrets or local files leaked into the history |
 
 ### Actors
 A malicious authenticated user (customer), an anonymous attacker on the internet, an insider with repository/CI access, a compromised dependency.

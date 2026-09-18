@@ -1,8 +1,8 @@
 # DEVELOPMENT — developer guide
 
-## 1. Prerequisites (verified on 2026-09-18 on this machine)
+## 1. Prerequisites (reference versions verified on 2026-09-18)
 
-| Tool | Version found | Required |
+| Tool | Reference version | Required |
 |---|---|---|
 | .NET SDK | 10.0.400 (runtime 10.0.11) — LTS | 10.0.x |
 | Git | 2.54.0.windows.1 | any recent |
@@ -70,11 +70,11 @@ The tests use the Microsoft.Testing.Platform (`global.json` → `test.runner`): 
 See `.editorconfig` (Phase 1). Public summary: C# 14, nullable enabled, warnings as errors, file-scoped namespaces, `sealed` by default, records for DTOs, entities with behaviour, `CancellationToken` in every asynchronous method, `TimeProvider` for time, no `.Result/.Wait()`.
 
 ## 6. Workflow per task
-1. Read `PROJECT_STATE.md` → the `BACKLOG.md` item (P0 of the current phase).
+1. Read `PROJECT_STATE.md` and pick the `BACKLOG.md` item (P0 of the current phase).
 2. Implement in small slices; build and tests green after each slice.
 3. Tests per `TEST_STRATEGY.md` (matrix).
 4. Update the affected docs + `PROJECT_STATE.md`.
-5. Local commit (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`), after a `git status` free of private files.
+5. Local commit (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`), after checking `git status` for secrets or local files.
 
 ## 7. Folder structure (see ARCHITECTURE.md §2) and where things go
 - New business rule → `Domain/<Module>/`, test in `UnitTests/<Module>/`.

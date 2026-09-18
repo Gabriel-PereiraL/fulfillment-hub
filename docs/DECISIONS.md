@@ -27,7 +27,7 @@ context (1 developer, C#/.NET portfolio, modular monolith, cost-aware, honest).
 | ID | Decision | Rationale / trade-off | Date |
 |---|---|---|---|
 | D-01 | Name **FulfillmentHub** kept; `FulfillmentHub.*` namespaces | descriptive, professional; can be revisited in Phase 19 at no technical cost | 2026-09-18 |
-| D-02 | Documentation in **pt-BR**, code/identifiers/commits in **English** — **superseded by D-76** | the user and the first reviewers were Brazilian; English code is the norm. The translation to English was a pending decision (D-P1) | 2026-09-18 |
+| D-02 | Documentation in **pt-BR**, code/identifiers/commits in **English** — **superseded by D-76** | the author and the first reviewers were Brazilian; English code is the norm. The translation to English was a pending decision (D-P1) | 2026-09-18 |
 | D-03 | Auth (Phase 3) **before** Orders (Phase 4) | an order needs a principal; retrofitting auth causes rework | 2026-09-18 |
 | D-04 | Docker Compose for dependencies and basic observability already in Phase 1 | a local database is a prerequisite; observability is not an afterthought | 2026-09-18 |
 | D-05 | A single `ProviderSimulator` process hosts both providers (`/delivery/v1` and `/payments/v1` routes) | fewer processes to run; separation by route is enough; can be split if it grows | 2026-09-18 |
@@ -44,9 +44,9 @@ context (1 developer, C#/.NET portfolio, modular monolith, cost-aware, honest).
 | D-16 | The delivery webhook reproduces `event.delivery_status` (current DaaS), not the legacy `dapi.status_changed` | it is the current Direct API contract; the legacy one is only mentioned | 2026-09-18 |
 | D-17 | The order moves to `InDelivery` on `pickup_complete` (not on `pickup`) | "pickup" means the courier is on the way; possession changes on `pickup_complete` | 2026-09-18 |
 | D-18 | 404 (not 403) when a customer accesses another customer's order | do not reveal that the resource exists | 2026-09-18 |
-| D-19 | Private skills in `.claude/skills/` (same layout as Serraf-Pessoas) + `.ai/` for memory; all in `.gitignore` | consistency with the other project; Claude Code loads `.claude/skills` automatically | 2026-09-18 |
-| D-20 | `github-workflow-enforcer` from Serraf-Pessoas not copied | it mandates pushes; violates an invariant | 2026-09-18 |
-| D-21 | Base of the C# skills: Mukesh's kit + Aaron/Microsoft complements + our own curated skill with critical review | better fit for .NET 10 and pragmatism; dogmatic kits discarded (Clean Architecture + Repository + MediatR) | 2026-09-18 |
+| D-19 | Local development tooling and editor configuration are kept out of the repository (`.gitignore`) | tooling preferences are not part of the software or its documentation | 2026-09-18 |
+| D-20 | No "push on every task" automation | pushing is a deliberate step after build, tests and a pre-publication check | 2026-09-18 |
+| D-21 | Coding guidelines curated for .NET 10 and reviewed critically; dogmatic templates (Clean Architecture + generic Repository + MediatR everywhere) deliberately not followed | better fit for .NET 10 and pragmatism (see ADR-006) | 2026-09-18 |
 | D-22 | Tests run on the **Microsoft.Testing.Platform** (`global.json` → `"test": {"runner": "Microsoft.Testing.Platform"}`, `UseMicrosoftTestingPlatformRunner`, no `Microsoft.NET.Test.Sdk`); `dotnet test --solution/--project` commands | the .NET 10 SDK does not run xunit.v3 in VSTest mode; MTP is the supported path | 2026-09-18 |
 | D-23 | Database health check via `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` (`AddDbContextCheck`) | Microsoft package aligned with EF Core 10; avoids `AspNetCore.HealthChecks.NpgSql` (third party, 9.0.0) | 2026-09-18 |
 | D-24 | OTLP exporter registered **only** when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured | tests and environments without a collector do not try to export; configuration (not code) decides the destination | 2026-09-18 |
@@ -101,7 +101,7 @@ context (1 developer, C#/.NET portfolio, modular monolith, cost-aware, honest).
 | D-73 | A pointer in the webhook queue (`{webhookEventId, provider}`), not the payload: the inbox is the source of truth; publish failed → process in-process in the same request (log 5203) | 64 KB of payload need not travel twice; the API never depends on the broker to answer 200 | 2026-09-18 |
 | D-74 | A webhook pointer is acknowledged (deleted) whatever the processing result — `Failed` stays on the event and reconciliation corrects it; only malformed pointers are redelivered until the DLQ | redelivering does not change a deterministic error; the webhook DLQ is reserved for broken messages | 2026-09-18 |
 | D-75 | Consumer backoff via `ChangeMessageVisibility` (exponential + jitter, `RetryBaseDelaySeconds`/`RetryMaxDelaySeconds`), instead of waiting the whole `VisibilityTimeout`; DLQ through the redrive policy after `MaxReceiveCount` | fast redeliveries for transient failures without losing the standard SQS semantics | 2026-09-18 |
-| D-76 | Public documentation (README, `docs/`, ADRs) in **English**; code, identifiers and commits remain in English; private AI files stay as they are. Supersedes D-02 and resolves D-P1 ahead of Phase 19 | the repository is public and the intended audience includes international reviewers; a single language avoids maintaining two versions. Translation preserved meaning, dates and IDs; nothing was marked done that was not | 2026-09-18 |
+| D-76 | Public documentation (README, `docs/`, ADRs) in **English**; code, identifiers and commits remain in English. Supersedes D-02 and resolves D-P1 ahead of Phase 19 | the repository is public and the intended audience includes international reviewers; a single language avoids maintaining two versions. Translation preserved meaning, dates and IDs; nothing was marked done that was not | 2026-09-18 |
 
 ## Pending decisions
 
@@ -115,5 +115,5 @@ context (1 developer, C#/.NET portfolio, modular monolith, cost-aware, honest).
 | D-P6 | AWS network in dev: NAT / VPC endpoints / public subnets | A / B / C | C in dev with a flag for B | Phase 15 |
 | D-P7 | Terraform state | local / S3+DynamoDB | S3+DynamoDB (manual bootstrap) | Phase 15 |
 | D-P8 | ~~Simulator persists state in memory or SQLite~~ — **resolved on 2026-09-18 (D-43): memory** | — | — | — |
-| D-P9 | ~~Local `git init`~~ — **resolved on 2026-09-18**: local repository created in Phase 1 (`main` branch); `origin` remote = public GitHub added after Phase 9 with explicit authorization, history preserved | — | — | — |
+| D-P9 | ~~Local `git init`~~ — **resolved on 2026-09-18**: local repository created in Phase 1 (`main` branch); `origin` remote = public GitHub added after Phase 9, history preserved | — | — | — |
 | D-P10 | ~~API versioning~~ — **resolved on 2026-09-18**: fixed `/api/v1` prefix on every group, no versioning library | — | — | — |

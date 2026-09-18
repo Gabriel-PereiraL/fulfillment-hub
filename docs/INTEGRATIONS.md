@@ -15,7 +15,7 @@
 | Uber Direct — Get started (auth, flow) | https://developer.uber.com/docs/deliveries/get-started | 2026-09-18 | token, `customer_id`, steps |
 | Delivery Status Webhook (DaaS) | https://developer.uber.com/docs/deliveries/daas/references/api/webhooks/delivery-status-webhook | 2026-09-18 | `event.delivery_status`, payload, statuses |
 | Webhooks — security/retry (general Uber guide) | https://developer.uber.com/docs/riders/guides/webhooks | 2026-09-18 | HMAC-SHA256 hex, retry/backoff, no ordering guarantee |
-| Official SDK `uber/uber-direct-sdk` (Apache-2.0) — `src/deliveries/openapi.yaml` (Direct API v1.0.1) and `src/auth/openapi.yaml` | https://github.com/uber/uber-direct-sdk | 2026-09-18 (last repository commit: 2024-10-24) | private copy kept out of the repository for reference; OpenAPI 3.1 spec with schemas and errors |
+| Official SDK `uber/uber-direct-sdk` (Apache-2.0) — `src/deliveries/openapi.yaml` (Direct API v1.0.1) and `src/auth/openapi.yaml` | https://github.com/uber/uber-direct-sdk | 2026-09-18 (last repository commit: 2024-10-24) | not vendored into the repository; OpenAPI 3.1 spec with schemas and errors, used as the reference for the reproduced fields |
 
 The primary reference for schemas and error codes is the OpenAPI spec of the official SDK (maintained by Uber). Where the
 portal and the spec differ, the portal (more recent) wins and the difference is noted here.

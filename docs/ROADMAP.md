@@ -5,7 +5,7 @@ Status: `todo` · `in-progress` · `done` · `blocked`. The order was adjusted f
 Orders** (an order needs a principal; retrofitting authentication later causes rework), **Docker Compose for dependencies
 moved into Phase 1** (a local database is needed from the start) and **basic observability** (structured logging,
 correlation id, OTel skeleton) also moved into Phase 1 (invariant: it is not an afterthought). The CI and AWS phases require
-the user's **explicit authorization** for external actions (GitHub, AWS account, costs).
+an **explicit go decision** because they involve external accounts and costs (GitHub Actions, AWS).
 
 | # | Phase | Status | Gate |
 |---|---|---|---|
@@ -24,7 +24,7 @@ the user's **explicit authorization** for external actions (GitHub, AWS account,
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | todo | Gate 12 |
 | 13 | Docker images + full compose | todo | Gate 13 |
 | 14 | CI (GitHub Actions) — the public repository already exists; no workflow yet | todo | Gate 14 |
-| 15 | AWS IaC (Terraform) — **requires an AWS account/cost authorization** | todo | Gate 15 |
+| 15 | AWS IaC (Terraform) — **requires an AWS account and a cost decision** | todo | Gate 15 |
 | 16 | Cloud deployment (ECS Fargate, RDS, SQS, Secrets, CloudWatch alerts) | todo | Gate 16 |
 | 17 | Admin/Ops UI (Blazor) | todo | Gate 17 |
 | 18 | Performance & resilience tests | todo | Gate 18 |
@@ -34,10 +34,10 @@ the user's **explicit authorization** for external actions (GitHub, AWS account,
 ---
 
 ## Phase 0 — Documentation and architecture — `done`
-**Goal**: enough documentation for "continue the project" to work without extra context.
-**Tasks**: inspect the environment; choose .NET; research Uber Direct and skills; name; architecture; domain; docs; roadmap; backlog; ADRs; PROJECT_STATE; .gitignore; CLAUDE.md; private skills; skills index.
-**Acceptance criteria (Gate 0)**: every file in `docs/` + `docs/adr/` exists and is coherent; CLAUDE.md points to PROJECT_STATE and SKILLS_INDEX; `.gitignore` covers private files/secrets; the manual "new session" test is described in `.ai/CHECKLIST.md`.
-**Dependencies**: none. **Risks**: over-documenting without code (mitigated: Phase 1 starts in the next session).
+**Goal**: enough documentation for the project to be continued from the docs alone, without extra context.
+**Tasks**: inspect the environment; choose .NET; research Uber Direct; name; architecture; domain; docs; roadmap; backlog; ADRs; PROJECT_STATE; .gitignore.
+**Acceptance criteria (Gate 0)**: every file in `docs/` + `docs/adr/` exists and is coherent; `.gitignore` covers secrets and local files; the documentation alone is enough to continue the project.
+**Dependencies**: none. **Risks**: over-documenting without code (mitigated: Phase 1 starts right after).
 
 ## Phase 1 — .NET solution + foundation — `done`
 **Goal**: an executable skeleton compiling with analyzers, local database, migrations, health check, first tests, minimal telemetry.
@@ -51,10 +51,10 @@ the user's **explicit authorization** for external actions (GitHub, AWS account,
 7. ProblemDetails + `IExceptionHandler`; OpenAPI + Scalar in Development.
 8. Structured logging (JSON console), correlation id middleware (`X-Correlation-Id`), OpenTelemetry (ASP.NET Core, HttpClient, Npgsql) → OTLP.
 9. ArchitectureTests: dependency direction; UnitTests: 1 `Money` test; IntegrationTests: `WebApplicationFactory` + Testcontainers PostgreSQL running `/health/ready`.
-10. Local `git init` (no remote); first commit after a `git status` free of private files.
-**Acceptance criteria (Gate 1)**: `dotnet build` without warnings; `dotnet test` green (unit + arch + integration with a container); `docker compose up` brings up Postgres and the Aspire Dashboard; the API starts, `/health/ready` OK, trace visible in the dashboard; `git status` shows no private files.
-**Dependencies**: Docker Desktop running. **Risks**: .NET 10 package versions (validate on NuGet during the session); Testcontainers on Windows (Docker Desktop with WSL2).
-**Result (2026-09-18)**: all criteria met; 28 green tests; visual confirmation of the trace in the Aspire Dashboard left to the user. Adjustments from the plan: tests run on the Microsoft.Testing.Platform (xunit.v3 + .NET 10 SDK); database health check via Microsoft's EF Core package; empty initial migration (the model arrives in Phase 2).
+10. Local `git init` (no remote); clean first commit (no secrets or local files).
+**Acceptance criteria (Gate 1)**: `dotnet build` without warnings; `dotnet test` green (unit + arch + integration with a container); `docker compose up` brings up Postgres and the Aspire Dashboard; the API starts, `/health/ready` OK, trace visible in the dashboard; `git status` shows no secrets or local files.
+**Dependencies**: Docker Desktop running. **Risks**: .NET 10 package versions (validate on NuGet at implementation time); Testcontainers on Windows (Docker Desktop with WSL2).
+**Result (2026-09-18)**: all criteria met; 28 green tests; trace confirmed visually in the Aspire Dashboard. Adjustments from the plan: tests run on the Microsoft.Testing.Platform (xunit.v3 + .NET 10 SDK); database health check via Microsoft's EF Core package; empty initial migration (the model arrives in Phase 2).
 
 ## Phase 2 — Domain and database — `done`
 **Goal**: the domain model of the Catalog, Customers, Orders, Payments, Deliveries and Identity modules with tested invariants and a consistent schema.
@@ -127,12 +127,12 @@ the user's **explicit authorization** for external actions (GitHub, AWS account,
 **Goal**: multi-stage Dockerfiles (Api, Worker, Simulator, Admin), non-root user, healthcheck; compose brings everything up.
 **Gate 13**: `docker compose up --build` → the E2E flow passes against containers; images < 250 MB; local scan (Trivy/`docker scout`) without criticals.
 
-## Phase 14 — CI (GitHub Actions) — requires authorization
+## Phase 14 — CI (GitHub Actions)
 **Goal**: restore/build/analyzers/unit/integration (Testcontainers)/security scan (CodeQL, dependency review, gitleaks, Trivy)/image build/artifact pipeline.
-**Precondition**: the user authorizes the remote repository; anti-leak review (DEPLOYMENT.md §checklist) executed.
+**Precondition**: public repository in place (done since Phase 9); pre-publication review (DEPLOYMENT.md §8) executed.
 **Gate 14**: green pipeline on PRs; badges in the README; no secrets in workflows.
 
-## Phase 15 — AWS IaC (Terraform) — requires an account/cost authorization
+## Phase 15 — AWS IaC (Terraform) — requires an account and a cost decision
 **Goal**: Terraform modules: VPC, subnets, SG, ECR, ECS/Fargate, ALB, RDS PostgreSQL, SQS+DLQ, least-privilege IAM, Secrets Manager, CloudWatch; reviewed `plan`; budget alarm.
 **Gate 15**: clean, reviewed `terraform plan`; estimated cost documented; `terraform destroy` tested.
 
@@ -154,4 +154,4 @@ the user's **explicit authorization** for external actions (GitHub, AWS account,
 
 ## Phase 20 — Portfolio release
 **Goal**: final anti-leak review, `v1.0.0` tag, publication (with authorization).
-**Gate 20**: publication checklist (DEPLOYMENT.md) 100%; no private file in the Git history.
+**Gate 20**: publication checklist (DEPLOYMENT.md) 100%; no secret or local file in the Git history.

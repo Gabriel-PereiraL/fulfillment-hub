@@ -11,7 +11,7 @@ Target `net10.0` in every project, the SDK's default `LangVersion` (C# 14), `glo
 Libraries: stable versions compatible with .NET 10 (EF Core 10, Npgsql 10, OpenTelemetry 1.x, Microsoft.Extensions.Http.Resilience 10.x, xUnit v3, Testcontainers 4.x) — verified on NuGet in Phase 1 and pinned through Central Package Management.
 
 ## Rationale
-LTS = stability and a maturity signal for reviewers; C# 14 brings `field`, extension members and improvements that the main skill uses sparingly.
+LTS = stability and a maturity signal for reviewers; C# 14 brings `field`, extension members and improvements, used sparingly.
 Relevant new .NET 10 features: native validation in Minimal APIs, OpenAPI improvements, `Guid.CreateVersion7` (since .NET 9).
 
 ## Trade-offs

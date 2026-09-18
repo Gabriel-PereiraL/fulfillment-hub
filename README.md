@@ -11,7 +11,7 @@ signed webhooks, security and observability — each of them covered by tests th
 **Status (2026-09-18):** phases 0–9 of 20 complete. An order travels `Created → AwaitingPayment → Paid →
 DeliveryRequested → InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues
 (LocalStack) and the providers answering through signed webhooks. Next phase: **10 — Security hardening**.
-Detailed state in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
+Project status in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.
 > The simulators reproduce a limited subset of public API contracts for educational and portfolio purposes only.
@@ -96,6 +96,13 @@ docs/                               product, architecture, domain, integrations,
 | SQS: idempotent consumer and dead-letter queue | [Worker/Messaging](src/FulfillmentHub.Worker/Messaging), [SqsMessagingTests](tests/FulfillmentHub.IntegrationTests/Messaging/SqsMessagingTests.cs) |
 | Security (JWT, password hashing, deny by default, rate limiting) | [Api/Identity](src/FulfillmentHub.Api/Identity), [docs/SECURITY.md](docs/SECURITY.md) |
 | Observability | [Infrastructure/Telemetry](src/FulfillmentHub.Infrastructure/Telemetry), [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
+
+## Engineering workflow
+
+I use AI coding agents as part of my development workflow for implementation, investigation, debugging and repetitive
+engineering work. AI-generated changes are reviewed, tested and validated before being accepted.
+
+**I don't ship code I can't explain.**
 
 ## Roadmap (not implemented yet)
 

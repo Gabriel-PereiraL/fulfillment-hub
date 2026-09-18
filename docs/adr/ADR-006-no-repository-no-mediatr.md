@@ -28,4 +28,4 @@ endpoints — **no MediatR/Mediator**. Interfaces exist only at the external por
 
 ## Consequences
 - ArchitectureTests: `Domain` does not reference EF; `Application` does not reference `Infrastructure`.
-- Copied skills that suggest repository/MediatR are explicitly overridden by the main skill (section 12).
+- Guidance or templates that suggest a generic repository/MediatR are deliberately not followed in this codebase.

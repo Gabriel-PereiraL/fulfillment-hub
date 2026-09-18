@@ -134,7 +134,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-149 | Authorization tests: 401/403 per role (Phase 3) and cross-resource access (Phase 4) | 3/4 | P0 | done |
 | BL-150 | Convergence with `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
 | BL-151 | Stryker (mutation) on Domain | 12 | P3 | todo |
-| BL-152 | Integration suite intermittent on a cold Docker start: 4 failures on the first full run of session 10 (2026-09-18; `PaymentFlowTests` among them), 0 on the next two full runs — investigate timing (container start, circuit breaker/webhook windows) instead of retrying | 12 | P1 | todo |
+| BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying | 12 | P1 | todo |
 
 ## DevOps
 
@@ -142,9 +142,9 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 |---|---|---|---|---|
 | BL-160 | `docker-compose.yml` (Postgres 17, Aspire Dashboard; LocalStack in Phase 9; simulator in Phase 6) | 1 | P0 | done |
 | BL-161 | `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` | 1 | P0 | done |
-| BL-162 | Local `git init`, clean first commit (no private files) | 1 | P0 | done |
+| BL-162 | Local `git init`, clean first commit (no secrets or local files) | 1 | P0 | done |
 | BL-163 | Multi-stage non-root Dockerfiles + healthcheck (Api, Worker, Simulator, Admin) | 13 | P0 | todo |
-| BL-164 | GitHub Actions: build/test/scan/image — **after authorization** | 14 | P0 | todo |
+| BL-164 | GitHub Actions: build/test/scan/image | 14 | P0 | todo |
 | BL-165 | `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |
 
 ## AWS
@@ -163,7 +163,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 
 | ID | Item | Phase | Pri | Status |
 |---|---|---|---|---|
-| BL-200 | Phase 0: all base docs + ADRs + CLAUDE.md + skills | 0 | P0 | done |
+| BL-200 | Phase 0: all base docs + ADRs | 0 | P0 | done |
 | BL-201 | Update DOMAIN.md/INTEGRATIONS.md as implemented (every phase) | all | P0 | todo |
 | BL-202 | Simulator README with the disclaimer | 6 | P0 | done |
 | BL-203 | Decide the final documentation language (pt-BR vs. en) | 19 | P1 | done (English; public docs rewritten on 2026-09-18) |

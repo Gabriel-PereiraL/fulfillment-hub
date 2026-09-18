@@ -1,7 +1,7 @@
 # DEPLOYMENT — FulfillmentHub
 
 How the system is packaged, published and operated per environment. Phases 13 (Docker), 14 (CI), 15 (Terraform), 16 (cloud).
-Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is published at https://github.com/Gabriel-PereiraL/fullfillmentHub (manual, authorized push); CI/CD, images and AWS remain future work (Phases 13–16).
+Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is published at https://github.com/Gabriel-PereiraL/fullfillmentHub (manual push); CI/CD, images and AWS remain future work (Phases 13–16).
 
 ## 1. Environments
 
@@ -14,14 +14,14 @@ Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is p
 
 - Multi-stage: `mcr.microsoft.com/dotnet/sdk:10.0` (build/test/publish) → `mcr.microsoft.com/dotnet/aspnet:10.0` (runtime); `USER app` (non-root, port 8080); `HEALTHCHECK` calling `/health/live`.
 - One image per host: `fh-api`, `fh-worker`, `fh-simulator`, `fh-admin`. Tag = short commit SHA + `latest` only in dev.
-- No secrets in build args/layers; `.dockerignore` excludes `.ai/`, `.claude/`, `CLAUDE.md`, `.env*`, `bin/obj`.
+- No secrets in build args/layers; `.dockerignore` excludes `.env*`, `bin/obj` and local tooling files.
 - Local scan: `docker scout cves` or Trivy before publishing.
 
 ## 3. Full compose (Phase 13)
 
 Services: `postgres`, `localstack` (init script creates the queues + DLQ), `aspire-dashboard`, `simulator`, `api`, `worker`, `admin`. Profiles: `deps` (dependencies only, for `dotnet run`) and `full`.
 
-## 4. CI (Phase 14 — only after authorization for GitHub)
+## 4. CI (Phase 14)
 
 `ci.yml` pipeline on PRs and `main`:
 1. `actions/checkout`, `setup-dotnet` (10.0.x), NuGet cache.
@@ -56,15 +56,14 @@ infra/terraform/
 ## 7. Rollback
 ECS deployment circuit breaker (automatic rollback if the tasks do not become healthy); migrations are additive (expand/contract) so code can be rolled back without reverting the schema.
 
-## 8. Anti-leak checklist (before ANY push/publication)
+## 8. Pre-publication checklist (before any push/publication)
 
-- [ ] `git status` and `git ls-files` do not list: `CLAUDE.md`, `.ai/`, `.claude/`, `.skills/`, `*.prompt.md`, transcripts, scratchpads, copied skills.
-- [ ] `.gitignore` reviewed; `git check-ignore -v CLAUDE.md .ai .claude` confirms they are ignored.
+- [ ] `git status` and `git ls-files` do not list local tooling files, editor/agent configuration, scratch files or transcripts.
+- [ ] `.gitignore` reviewed (`git check-ignore -v <path>` confirms local files are ignored).
 - [ ] `gitleaks detect --source .` (or `git secrets`) with no findings; manual search for `password`, `secret`, `key=`, `AKIA`, `BEGIN PRIVATE KEY`, connection strings.
 - [ ] No `appsettings*.json` with real values; `.env.example` with placeholders only.
 - [ ] No dumps (`*.sql`, `*.dump`), CSVs with data, photos, personal documents.
 - [ ] No real personal data (author's or third parties' name/e-mail/phone) in seeds, tests, docs — use fictional data.
 - [ ] Clean Git history (if something leaked in an earlier commit: rewrite history **before** the first push, never after).
 - [ ] README and docs do not claim a real integration, real production, scale or users.
-- [ ] Third-party licences respected (copied skills are not in the repo; third-party code, if any, with attribution).
-- [ ] The user explicitly authorized creating the remote/pushing in this session.
+- [ ] Third-party licences respected (third-party code, if any, with attribution).

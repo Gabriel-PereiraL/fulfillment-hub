@@ -4,7 +4,7 @@ namespace FulfillmentHub.Application.Common;
 
 /// <summary>
 /// Outcome of a use case: a value or a single expected <see cref="Failure"/>. Deliberately small — no monads,
-/// no hierarchies (skill §6). Domain invariant violations still throw <c>DomainException</c>.
+/// no hierarchies (ADR-006). Domain invariant violations still throw <c>DomainException</c>.
 /// </summary>
 public sealed class Result<T>
 {

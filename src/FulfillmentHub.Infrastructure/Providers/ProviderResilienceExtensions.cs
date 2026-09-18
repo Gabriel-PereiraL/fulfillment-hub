@@ -51,7 +51,7 @@ public static class ProviderResilienceExtensions
         return builder;
     }
 
-    /// <summary>docs/INTEGRATIONS.md §1.4 / skill §11: never retry 4xx contract errors; retry throttling, timeouts and server errors.</summary>
+    /// <summary>docs/INTEGRATIONS.md §1.4 / §4: never retry 4xx contract errors; retry throttling, timeouts and server errors.</summary>
     internal static bool IsRetryable(Outcome<HttpResponseMessage> outcome) => outcome.Exception switch
     {
         // Transport failures carry no status; an HttpRequestException raised for a status (e.g. the token endpoint

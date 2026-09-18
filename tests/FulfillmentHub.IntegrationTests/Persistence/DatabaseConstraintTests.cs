@@ -12,7 +12,7 @@ using Npgsql;
 namespace FulfillmentHub.IntegrationTests.Persistence;
 
 /// <summary>
-/// The database is the last line of defence (docs/DOMAIN.md, skill §7): these tests bypass the domain rules on
+/// The database is the last line of defence (docs/DOMAIN.md §12): these tests bypass the domain rules on
 /// purpose and prove that PostgreSQL rejects the invalid state anyway.
 /// </summary>
 [Collection(ApiTests.Name)]

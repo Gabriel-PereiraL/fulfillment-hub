@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace FulfillmentHub.ProviderSimulator.Deliveries;
 
 // Wire contracts of the simulated delivery provider: a documented subset of the Uber Direct API field names
-// (docs/INTEGRATIONS.md §1–§2; reference spec in the private .ai/reference folder). snake_case on the wire.
+// (docs/INTEGRATIONS.md §1–§2; reference: the official uber-direct-sdk OpenAPI spec, not vendored here). snake_case on the wire.
 // This is a simulator for educational and portfolio purposes; it does not talk to Uber.
 
 public sealed record TokenResponse(string AccessToken, string TokenType, int ExpiresIn, string Scope);

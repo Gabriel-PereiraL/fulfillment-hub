@@ -28,5 +28,5 @@ AWS Budgets. Terraform with modules (`network`, `ecs-service`, `rds`, `sqs`, `se
 - Network: decision D-P6 pending (public subnets in dev vs. endpoints) — the chosen option will be documented with the real cost.
 
 ## Consequences
-- AWS_ARCHITECTURE.md and DEPLOYMENT.md describe the target; nothing is created without the user's explicit authorization.
+- AWS_ARCHITECTURE.md and DEPLOYMENT.md describe the target; nothing is created without an explicit cost decision.
 - Real lessons (IAM permissions that failed, observed costs) will be recorded in Phase 16.
