@@ -11,7 +11,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 |---|---|---|---|
 | 0 | Documentação e arquitetura | **done (2026-09-18)** | Gate 0 |
 | 1 | Solution .NET + foundation | **done (2026-09-18)** | Gate 1 |
-| 2 | Domínio e banco | todo | Gate 2 |
+| 2 | Domínio e banco | **done (2026-09-18)** | Gate 2 |
 | 3 | Identity + Auth (JWT, roles) | todo | Gate 3 |
 | 4 | Orders (API + idempotência + concorrência de estoque) | todo | Gate 4 |
 | 5 | Payments (simulator + integração + webhook + reconciliação) | todo | Gate 5 |
@@ -56,11 +56,12 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 **Dependências**: Docker Desktop rodando. **Riscos**: versões de pacotes .NET 10 (validar no NuGet na sessão); Testcontainers no Windows (Docker Desktop com WSL2).
 **Resultado (2026-09-18)**: todos os critérios atendidos; 28 testes verdes; confirmação visual do trace no Aspire Dashboard a cargo do usuário. Ajustes em relação ao plano: testes rodam no Microsoft.Testing.Platform (xunit.v3 + .NET 10 SDK); health check do banco via pacote EF Core da Microsoft; migration inicial vazia (modelo chega na Fase 2).
 
-## Fase 2 — Domínio e banco
+## Fase 2 — Domínio e banco — `done`
 **Objetivo**: modelo de domínio dos módulos Catalog, Customers, Orders, Payments, Deliveries, Identity com invariantes testadas e schema consistente.
 **Tasks**: tipos Common (Entity, AggregateRoot, Money, Address, IDs); entidades e máquinas de estado; configurações EF (owned/complex types, conversores, `xmin`, constraints, índices, sequence de número de pedido); migration; seed de desenvolvimento (produtos, usuário admin) via comando explícito; testes de unidade das invariantes (DOMAIN.md §10).
 **Gate 2**: 100% das invariantes listadas têm teste; migration aplica em banco limpo; constraints `CHECK`/`UNIQUE` existem (teste de integração que tenta violar); ArchitectureTests verdes.
 **Riscos**: over-modelagem — manter só o que os fluxos usam.
+**Resultado (2026-09-18)**: 6 módulos implementados (Catalog, Customers, Orders, Payments, Deliveries, Identity), migration `DomainModel`, 83 testes de unidade + 8 de integração (round-trips, CHECK, unique parcial, conflito `xmin`); `HasPendingModelChanges()` falso. Divergências registradas em DOMAIN.md §12 e D-27…D-30. Seed de desenvolvimento (BL-044) movido para a Fase 3 (precisa do hash de senha).
 
 ## Fase 3 — Identity + Auth
 **Objetivo**: usuários, papéis, login com JWT, políticas; API nega por padrão.

@@ -52,6 +52,10 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-24 | Exportador OTLP registrado **somente** quando `OTEL_EXPORTER_OTLP_ENDPOINT` está configurado | testes e ambientes sem coletor não tentam exportar; configuração (não código) decide o destino | 2026-09-18 |
 | D-25 | `Microsoft.EntityFrameworkCore.Design` referenciado no projeto de startup (`Api`), `PrivateAssets=all`; migrations em `Infrastructure/Persistence/Migrations` isentas de analyzers via `.editorconfig` | exigência do `dotnet ef`; código gerado não segue o estilo do projeto | 2026-09-18 |
 | D-26 | Logs em JSON (`AddJsonConsole`) fora de Development; console legível em Development; `LoggerMessage` com `EventId` fixo | containers/coletores ingerem uma linha JSON por evento; dev lê no terminal | 2026-09-18 |
+| D-27 | `Role` como enum e `User.Roles` como `text[]` (primitive collection), sem entidade `Role`/join table | conjunto fixo de 3 papéis; menos tabelas e joins; Npgsql mapeia arrays nativamente | 2026-09-18 |
+| D-28 | Value objects (`Money`, `Address`, `CourierInfo`) como **complex types** do EF Core 10 (table splitting), inclusive opcionais; VOs de um campo (`EmailAddress`, `PhoneNumber`) via value converter | semântica de valor (owned types têm identidade e quebram com instâncias compartilhadas); EF 10 passou a suportar complex types opcionais | 2026-09-18 |
+| D-29 | `EFCore.NamingConventions` (MIT, mantido pelo autor do Npgsql) para snake_case | identificadores PostgreSQL sem aspas, legíveis em SQL bruto/psql; alternativa (nomear tudo à mão) é verbosa e propensa a erro. Efeito colateral: colunas de `__EFMigrationsHistory` também em snake_case — bancos criados antes precisam ser recriados | 2026-09-18 |
+| D-30 | `DbContext` com tracking padrão; leituras usam `AsNoTracking()` explicitamente (não NoTracking global como sugere `efcore-patterns`) | evita `Update()` marcando a entidade inteira como modificada e bugs silenciosos em escritas | 2026-09-18 |
 
 ## Decisões pendentes
 

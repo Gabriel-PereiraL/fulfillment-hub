@@ -219,3 +219,24 @@ Sem refresh token na primeira versão (JWT de curta duração + relogin); regist
 
 - **D-P3 — momento de cobrar a taxa de entrega**: hoje o pagamento é criado antes da cotação (taxa desconhecida). Opções: (a) cotar antes de criar o pedido e cobrar total com taxa; (b) cobrar produtos e ajustar/cobrar a taxa depois; (c) taxa fixa estimada. Proposta: **(a)** — `POST /orders` já cota a entrega (síncrono) e congela a taxa se a cotação for válida; recotação na criação da entrega só se expirou (diferença absorvida pela "loja"). Decidir na Fase 4.
 - Refresh tokens (P2). Múltiplos endereços por cliente vs. endereço apenas no pedido (manter ambos por ora).
+
+## 12. Implementação (Fase 2, 2026-09-18) — o código é a fonte da verdade a partir daqui
+
+Divergências e precisões em relação às seções acima, decididas ao implementar:
+
+| Tema | Especificado acima | Implementado | Motivo |
+|---|---|---|---|
+| `Role` | entidade + M:N `UserRole` | `enum Role { Customer, Operator, Admin }`; `User.Roles` persistido como `text[]` (`users.roles`) | conjunto fixo; join table seria cerimônia (D-27) |
+| Endereços do cliente | owned collection de `Address` com `IsDefault` | entidade filha `CustomerAddress` (`Id`, `Label`, `Address`, `IsDefault`) em `customer_addresses`, gerida só pelo agregado | owned collection não comporta bem o VO como complex type |
+| `Money`, `Address`, `CourierInfo` | owned/complex | **complex types** (EF Core 10, table splitting) — `DeliveryFee` e `Courier` são complex types opcionais (colunas nullable) | semântica de valor real (instâncias compartilhadas OK), sem identidade (D-28) |
+| `Order.Number` | `string(16)` "FH-2026-000123" | `long` gerado pela sequence `order_number_seq` (início 1000); formatação "FH-…" é apresentação | geração no banco, sem round-trip extra |
+| `DeliveryStatus` | `Requested, Pending, …` | idem + `DeliveryEventDisposition { Applied, Duplicate, OutOfOrder, Stale, Conflict }` no lugar de `Applied bool + Note` | classificação explícita e testável |
+| `DeliveryEvent` | `Applied`, `Note` | `Disposition`; `UNIQUE(delivery_id, provider_event_id)` | idem |
+| `Payment` | "webhook mais antigo é ignorado" | `ApplyProviderStatus(reported, providerEventAt, …)` retorna `false` para evento stale ou mesmo status; `StartAttempt/CompleteAttempt` com um pendente por vez | |
+| Cancelamento do pedido | tabela §5 | `Order.Cancel(reason)` valida **status × motivo** (`CustomerRequest` até `DeliveryRequested`; `PaymentFailed/Timeout` até `AwaitingPayment`; `DeliveryFailed` de `Paid` a `InDelivery`; `OperatorAction` em qualquer não-final); evento `OrderCancelled` carrega `PreviousStatus` | consumidores decidem liberar estoque/estornar pelo status anterior |
+| Reserva de estoque | "reserva com concorrência otimista" | `Product.Reserve/Release` + `xmin` (`IsRowVersion` em `uint "xmin"`) + `CHECK stock_quantity >= 0` | teste de integração prova o conflito (`DbUpdateConcurrencyException`) |
+| IDs | `readonly record struct` | idem + `IStronglyTypedId<TSelf>` (static abstract `From`) e `StronglyTypedIdConverter<TId>` registrado em `ConfigureConventions` | um conversor para todos os IDs |
+| Nomes no banco | `snake_case` | `EFCore.NamingConventions` (`UseSnakeCaseNamingConvention`) — inclusive colunas de `__EFMigrationsHistory` | D-29 |
+| Registros de infraestrutura (§9) | listados | **ainda não criados** (outbox/webhook/idempotência/audit chegam nas fases 4, 5 e 8) | escopo da Fase 2 = agregados |
+
+Invariantes de §10: todas cobertas por testes de unidade (`tests/FulfillmentHub.UnitTests/Domain/*`) e, onde o banco participa, por testes de integração (`tests/FulfillmentHub.IntegrationTests/Persistence/*`).

@@ -8,16 +8,16 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-001 | Tipos Common: `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Money`, `Address`, `EmailAddress`, `PhoneNumber`, IDs tipados (Guid v7) | 2 | P0 | todo |
-| BL-002 | `Product` com `Reserve/Release` e invariante de estoque | 2 | P0 | todo |
-| BL-003 | `Customer` com endereços (owned) | 2 | P0 | todo |
-| BL-004 | `Order` + `OrderItem` + máquina de estados + `OrderStatusChange` + eventos | 2 | P0 | todo |
-| BL-005 | `Payment` + `PaymentAttempt` + máquina de estados | 2 | P0 | todo |
-| BL-006 | `DeliveryQuote`, `Delivery` + `DeliveryEvent` + regra de ordem canônica | 2 | P0 | todo |
-| BL-007 | `User`, `Role` | 2 | P0 | todo |
-| BL-008 | Testes de unidade de todas as invariantes (DOMAIN.md §10) | 2 | P0 | todo |
+| BL-001 | Tipos Common: `Entity`, `AggregateRoot`, `IDomainEvent`, `DomainException`, `Money`, `Address`, `EmailAddress`, `PhoneNumber`, IDs tipados (Guid v7) | 2 | P0 | done |
+| BL-002 | `Product` com `Reserve/Release` e invariante de estoque | 2 | P0 | done |
+| BL-003 | `Customer` com endereços (owned) | 2 | P0 | done |
+| BL-004 | `Order` + `OrderItem` + máquina de estados + `OrderStatusChange` + eventos | 2 | P0 | done |
+| BL-005 | `Payment` + `PaymentAttempt` + máquina de estados | 2 | P0 | done |
+| BL-006 | `DeliveryQuote`, `Delivery` + `DeliveryEvent` + regra de ordem canônica | 2 | P0 | done |
+| BL-007 | `User`, `Role` | 2 | P0 | done |
+| BL-008 | Testes de unidade de todas as invariantes (DOMAIN.md §10) | 2 | P0 | done |
 | BL-009 | Decidir D-P3 (taxa de entrega no pedido) e ajustar `Order`/`Payment` | 4 | P0 | todo |
-| BL-010 | Número de pedido legível via sequence | 2 | P1 | todo |
+| BL-010 | Número de pedido legível via sequence | 2 | P1 | done |
 
 ## API
 
@@ -44,10 +44,10 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
 | BL-040 | `FulfillmentHubDbContext` + `IFulfillmentHubDbContext` + migration inicial + `dotnet ef` funcionando | 1 | P0 | done |
-| BL-041 | Configurações EF por entidade; owned/complex types; conversores de ID; `xmin` como concurrency token | 2 | P0 | todo |
-| BL-042 | Constraints: `CHECK stock >= 0`, `UNIQUE` parciais (pagamento/entrega ativos por pedido), `UNIQUE(provider, provider_event_id)` | 2 | P0 | todo |
-| BL-043 | Índices para consultas de lista (customer_id+created_at, status), outbox (`status,next_attempt_at`), webhook | 2 | P0 | todo |
-| BL-044 | Seed de desenvolvimento por comando explícito (`dotnet run -- seed`) | 2 | P1 | todo |
+| BL-041 | Configurações EF por entidade; owned/complex types; conversores de ID; `xmin` como concurrency token | 2 | P0 | done |
+| BL-042 | Constraints: `CHECK stock >= 0`, `UNIQUE` parciais (pagamento/entrega ativos por pedido), `UNIQUE(provider, provider_event_id)` | 2 | P0 | done |
+| BL-043 | Índices para consultas de lista (customer_id+created_at, status), outbox (`status,next_attempt_at`), webhook | 2 | P0 | done |
+| BL-044 | Seed de desenvolvimento por comando explícito (`dotnet run -- seed`) — movido da Fase 2: depende do `PasswordHasher` | 3 | P1 | todo |
 | BL-045 | Interceptor de auditoria (`CreatedAt/UpdatedAt`) e `audit_logs` para ações operacionais | 2/8 | P1 | todo |
 | BL-046 | Estratégia de aplicação de migrations em nuvem (task one-off / `migrations script --idempotent`) | 16 | P0 | todo |
 | BL-047 | `ExecutionStrategy` (retry de transientes Npgsql) configurada e testada com transações explícitas | 8 | P1 | todo |
