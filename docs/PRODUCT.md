@@ -91,7 +91,7 @@ Cliente                      FulfillmentHub (API)              Worker           
 - Preço: preço unitário congelado no item (snapshot), subtotal, taxa de entrega (após cotação), total.
 - Estado com histórico de transições (quem/quando/por quê).
 - Cancelamento pelo cliente (enquanto não pago ou antes da coleta, conforme regra) e pelo operador; libera estoque; solicita estorno/cancelamento de entrega quando aplicável.
-- Transação: pedido + reserva de estoque + outbox no mesmo commit.
+- Transação: pedido + reserva de estoque + cotação de entrega + evento `OrderPlaced` na outbox no mesmo commit (Fase 8). **Consistência eventual**: `POST /orders` responde `Created`; o pagamento é criado pelo Worker em seguida (normalmente < 1 s) e o pedido passa a `AwaitingPayment` → `Paid` → `DeliveryRequested` sem intervenção — o cliente acompanha por `GET /orders/{id}`.
 
 ### Pagamentos (Payments)
 - Provider simulado (sem dinheiro real). Ciclo: `Pending → Authorized → Paid` | `Failed` | `Cancelled` | `Refunded`.

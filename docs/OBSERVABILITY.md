@@ -37,7 +37,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `http.server.request.duration` | histograma | route, status | nativa ASP.NET Core | 1 |
 | `http.client.request.duration` | histograma | `server.address`, status | nativa HttpClient | 1 |
 | `fh.orders.placed` / `fh.orders.cancelled` | counter | `reason` (cancel) | Application (`OrdersMetrics`) | 4 ✔ |
-| `fh.order.time_to_final` | histograma (s) | `final_status` | Worker | 8 |
+| `fh.order.time_to_final` | histograma (s) | `final_status` | Worker | 11 (BL-123) |
 | `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 — **pendente** (só log `4100` por enquanto; adicionar contador na Fase 11) |
 | `fh.stock.reservation_conflicts` | counter | `kind` (`insufficient_stock`, `concurrent_update`) | Application (`OrdersMetrics`) | 4 ✔ |
 | `fh.provider.request.duration` | histograma | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5 — coberto por `http.client.request.duration` (instrumentação OTel de `HttpClient`, tag `http.request.resend_count` = tentativa) + span `Provider <op>`; métrica própria só se a padrão não bastar (BL-246) |
@@ -48,9 +48,10 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | `fh.payments.settled` | counter | `status` (`paid`, `failed`, `paid_after_cancellation`) | Application (`PaymentStatusApplier`) | 5 ✔ |
 | `fh.deliveries.quotes` / `fh.deliveries.requested` | counter | `outcome` (`quoted`, `fallback_fee`, `rejected`, `requoted` / `created`, `adopted`, `adopted_duplicate`, `deferred`, `rejected`, `quote_expired_twice`) | Application (`DeliveriesMetrics`) | 6 ✔ |
 | `fh.webhooks.processing.duration` | histograma | `provider` | Worker | 7 |
-| `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | Worker (poll) | 8 |
-| `fh.outbox.lag` | histograma (s: `now - occurred_at` ao publicar) | `type` | Worker | 8 |
-| `fh.outbox.publish.duration` | histograma | — | Worker | 8 |
+| `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | `OutboxMetrics` (atualizado a cada passada do publisher) | 8 ✔ |
+| `fh.outbox.published` | counter | `outcome` (`processed`, `retried`, `failed`), `type` | `OutboxProcessor` | 8 ✔ |
+| `fh.outbox.lag` | histograma (s: `now - occurred_at` ao publicar) | `type` | `OutboxProcessor` | 8 ✔ |
+| `fh.outbox.publish.duration` | histograma (ms por handler) | `type` | `OutboxProcessor` | 8 ✔ |
 | `fh.queue.messages.processed` / `.failed` | counter | `queue`, `consumer` | Worker | 9 |
 | `fh.queue.message.age` | histograma (s: `SentTimestamp` → receive) | `queue` | Worker | 9 |
 | `fh.queue.dlq.depth` | gauge | `queue` | Worker (GetQueueAttributes) + CloudWatch nativo | 9/16 |
@@ -62,7 +63,7 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 | Span | Onde | Atributos |
 |---|---|---|
 | `PlaceOrder` (e demais casos de uso) | Application | `order.id`, `customer.id` (id, não nome), `order.items.count` |
-| `Outbox.Publish` | Worker | `outbox.message.id`, `outbox.type`, `outbox.attempt` |
+| `Outbox <type>` | Infrastructure (`OutboxProcessor`, roda no Worker) | `messaging.message.id`, `outbox.attempt`; `ActivityKind.Consumer` com parent = `trace_parent` gravado na mensagem (o span do handler continua o trace da request que gerou o evento) — Fase 8 ✔ |
 | `Consume <queue>` | Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id` (semântica OTel messaging) |
 | `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Fase 5 ✔ pagamento: `Provider CreatePayment/GetPayment/RefundPayment`; Fase 6 ✔ entrega: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
 | `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |

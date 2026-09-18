@@ -33,7 +33,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-027 | `POST /webhooks/payments` (assinatura, dedup, 200 rápido) | 5 | P0 | done |
 | BL-028 | `POST /webhooks/deliveries` | 7 | P0 | todo |
 | BL-029 | Endpoints de catálogo: `GET /products` (**done**, Fase 4); CRUD admin de produtos pendente | 4/17 | P1 | doing |
-| BL-030 | Endpoints de operação: reprocessar outbox/webhook, reconciliar, cancelar entrega | 8–9 | P1 | todo |
+| BL-030 | Endpoints de operação: reprocessar outbox/webhook, reconciliar, cancelar entrega | 8–9 | P1 | parcial (outbox: listar `Failed` + retry ✔ Fase 8; webhooks/reconciliar/cancelar → Fase 17) |
 | BL-031 | Validação nativa .NET 10 (`AddValidation`) nos requests | 4 | P0 | done |
 | BL-032 | Versionamento de API (`/v1`) — decidir se via path fixo | 4 | P2 | todo |
 | BL-033 | Refresh tokens | 10 | P2 | todo |
@@ -66,7 +66,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-248 | Varredura de entregas `Requested` órfãs sem pedido `Paid` (ex.: pedido cancelado entre a criação local e a confirmação) — hoje só logs | 8 | P2 | todo |
 | BL-066 | Rota admin do simulator (`POST /admin/scenario`) | 7 | P1 | todo |
 | BL-067 | Reconciliação periódica de pagamentos e entregas (`GET` no provider) | 5/8 | P1 | done (pagamentos Fase 5, entregas Fase 7: `DeliveryReconciliationService`) |
-| BL-244 | Estorno automático quando o provider captura após o cliente cancelar (`paid_after_cancellation`) — hoje só log 5002 + métrica | 8 | P1 | todo |
+| BL-244 | Estorno automático quando o provider captura após o cliente cancelar (`paid_after_cancellation`) — hoje só log 5002 + métrica | 8 | P1 | done (`RefundPaymentHandler` via `OrderCancelled`/`PaymentPaid`) |
 | BL-245 | Simulator: `WebhookFailFirstN` (força retry de entrega de webhook) e cenário de webhook fora de ordem | 7 | P2 | todo |
 | BL-068 | Contract tests: schemas do simulator vs. DTOs do cliente | 12 | P1 | todo |
 | BL-069 | Segundo provider de entrega (`AlternativeProvider`) para demonstrar substituição | 18+ | P3 | todo |
@@ -76,10 +76,10 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 
 | ID | Item | Fase | Pri | Status |
 |---|---|---|---|---|
-| BL-080 | `OutboxMessage` + interceptor de `SaveChanges` (eventos → outbox no mesmo commit) | 8 | P0 | todo |
-| BL-081 | `OutboxPublisher` (`SKIP LOCKED`, lote, backoff+jitter, `Failed` após N) | 8 | P0 | todo |
-| BL-082 | Handlers in-process: `OrderPlaced`→pagamento, `OrderPaid`→entrega, `OrderCancelled`→estoque/estorno | 8 | P0 | todo |
-| BL-083 | Teste "crash entre commit e publicação não perde evento" | 8 | P0 | todo |
+| BL-080 | `OutboxMessage` + interceptor de `SaveChanges` (eventos → outbox no mesmo commit) | 8 | P0 | done |
+| BL-081 | `OutboxPublisher` (`SKIP LOCKED`, lote, backoff+jitter, `Failed` após N) | 8 | P0 | done |
+| BL-082 | Handlers in-process: `OrderPlaced`→pagamento, `OrderPaid`→entrega, `OrderCancelled`→estoque/estorno | 8 | P0 | done |
+| BL-083 | Teste "crash entre commit e publicação não perde evento" | 8 | P0 | done (T12 em `OutboxTests`) |
 | BL-084 | `IMessagePublisher` SQS + filas/DLQ via LocalStack (compose init + Testcontainers) | 9 | P0 | todo |
 | BL-085 | Consumidores SQS: long polling, visibility, concorrência limitada, `processed_messages` (idempotent consumer) | 9 | P0 | todo |
 | BL-086 | Webhooks → `fh-webhooks-inbound` | 9 | P0 | todo |
@@ -128,7 +128,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | done |
 | BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | done (pagamento T6 Fase 5; entrega T6/T7 Fase 7) |
 | BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 5/6 | P0 | parcial (retry ✔ T9, abre ✔ T10; half-open Fase 6) |
-| BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | todo |
+| BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | done |
 | BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |
 | BL-148 | E2E com compose: 3 fluxos | 12 | P0 | todo |
 | BL-149 | Testes de autorização: 401/403 por papel (Fase 3) e acesso cruzado por recurso (Fase 4) | 3/4 | P0 | done |

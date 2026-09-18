@@ -199,9 +199,10 @@ Caos genérico (seção `Simulator:Chaos`, aplicado a todas as rotas do simulato
 
 | Operação | Modo | Por quê |
 |---|---|---|
-| Cotação de entrega ao criar pedido | síncrona | usuário precisa da taxa para confirmar; resposta rápida; falha → 503 controlado |
-| Criar pagamento | assíncrona (outbox) | não bloquear o `POST /orders`; retry sem o cliente esperar |
-| Criar entrega | assíncrona (evento `OrderPaid`) | só após pagamento; retries longos |
-| Processar webhooks | assíncrona (persistir → fila) | responder ao provider em ms; reprocessamento; isolar falhas |
-| Cancelar entrega pelo operador | síncrona (com retry curto) | operador espera confirmação; fallback: marcar "cancelamento pendente" e worker tenta |
+| Cotação de entrega ao criar pedido | síncrona (Fase 6 ✔) | usuário precisa da taxa para confirmar; provider fora → taxa estimada (D-51), nunca 503 |
+| Criar pagamento | assíncrona (outbox `OrderPlaced`, Fase 8 ✔; in-process nas Fases 5–7) | não bloquear o `POST /orders`; retry sem o cliente esperar |
+| Criar entrega | assíncrona (outbox `OrderPaid`, Fase 8 ✔; varredura do Worker como rede de segurança) | só após pagamento; retries longos |
+| Processar webhooks | persistir → processar in-process no mesmo request (Fases 5/7); os efeitos seguintes (estorno, entrega) saem por eventos na outbox | responder ao provider em ms; o `200` não depende do processamento; reconciliação cobre falhas |
+| Cancelar entrega pelo operador/cliente | síncrona (Fase 6 ✔: cancela no provider antes de cancelar localmente; `noncancelable_delivery` → 409) | quem cancela espera a confirmação |
+| Estornar pagamento | assíncrona (outbox `OrderCancelled`/`PaymentPaid`, Fase 8 ✔) | nunca dentro de um webhook; retry até o provider aceitar |
 | Reconciliação | job periódico | varredura de pendentes |
