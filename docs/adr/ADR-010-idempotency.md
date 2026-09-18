@@ -30,3 +30,11 @@ commit é o que torna a garantia real, não best-effort.
 ## Consequências
 - Testes T1–T3, T6, T9 (timeout com idempotency key), T14 na matriz de TEST_STRATEGY.md.
 - OpenAPI documenta o header; ProblemDetails específicos para 409/422 de idempotência.
+
+## Implementação (Fase 4, 2026-09-18) — precisões em relação à decisão
+- **Fingerprint** = SHA-256 de `METHOD PATH\n` + JSON canônico do request **já vinculado** (`JsonSerializer` com as opções da API), não dos bytes brutos: o filtro de endpoint roda após o binding (o corpo já foi consumido) e o JSON canônico ignora diferenças de espaçamento/ordem de escrita irrelevantes.
+- **O que é armazenado e reproduzido**: qualquer resposta com status < 500 (inclusive 4xx como `409 insufficient_stock`) — a chave representa *aquele* pedido; para tentar de novo o cliente usa outra chave. Em exceção/5xx a chave é liberada (`ReleaseAsync`) para permitir retry com a mesma chave.
+- **Reprodução**: status, corpo, `Content-Type`, `Location` e o header `Idempotent-Replayed: true`.
+- **Escopo** = id do usuário autenticado; chave 1–64 chars `[A-Za-z0-9-_]`; TTL 24 h (linha expirada é reutilizada por uma nova requisição); expurgo de linhas expiradas é P2.
+- **Unidade de trabalho própria** (`IdempotencyStore` com escopo DI separado): a chave é reivindicada antes do handler e finalizada depois, independentemente do `DbContext` da requisição — a colisão entre chamadas concorrentes com a mesma chave é resolvida pela chave primária `(scope, key)`.
+- `POST /orders/{id}/cancel` não exige chave: o cancelamento é naturalmente idempotente (mesmo estado = no-op).

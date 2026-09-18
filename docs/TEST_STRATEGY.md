@@ -47,11 +47,11 @@ concorrência, resiliência). Não há meta de quantidade nem de cobertura numé
 
 | # | Garantia | Cenário de teste | Camada | Fase |
 |---|---|---|---|---|
-| T1 | Idempotência da API | mesma `Idempotency-Key` + mesmo body → 1 pedido, mesma resposta (201 → 201 com mesmo id) | integration | 4 |
-| T2 | Idempotência da API | mesma chave + body diferente → 422 | integration | 4 |
-| T3 | Idempotência da API | duas requisições concorrentes com a mesma chave → uma 201, outra 409 (ou 201 igual após conclusão) | integration | 4 |
-| T4 | Concorrência de estoque | 20 tarefas paralelas comprando o último item → exatamente 1 sucesso; estoque = 0; **teste falha se o token de concorrência for removido** | integration | 4 |
-| T5 | Máquina de estados | toda transição da tabela (válida) e uma inválida por estado | unit | 2 |
+| T1 | Idempotência da API | mesma `Idempotency-Key` + mesmo body → 1 pedido, mesma resposta (201 → 201 com mesmo id) | integration | 4 ✔ `PlaceOrder_RepeatedWithSameKeyAndPayload_ReplaysResponse_WithoutSecondOrder` |
+| T2 | Idempotência da API | mesma chave + body diferente → 422 | integration | 4 ✔ `PlaceOrder_RepeatedWithSameKeyButDifferentPayload_Returns422` |
+| T3 | Idempotência da API | duas requisições concorrentes com a mesma chave → uma 201, outra 409 (ou 201 igual após conclusão) | integration | 4 ✔ `PlaceOrder_ConcurrentRequestsWithSameKey_CreateExactlyOneOrder` (10 em paralelo) |
+| T4 | Concorrência de estoque | 20 tarefas paralelas comprando o último item → exatamente 1 sucesso; estoque = 0; **teste falha se o token de concorrência for removido** | integration | 4 ✔ `PlaceOrder_TwentyBuyersForTheLastUnit_ExactlyOneSucceeds`; verificado em 2026-09-18: sem `UseXminAsConcurrencyToken` no `Product` o teste falhou em 3/3 execuções ("there is only one unit in stock") |
+| T5 | Máquina de estados | toda transição da tabela (válida) e uma inválida por estado | unit | 2 ✔ `OrderTests`, `PaymentTests`, `DeliveryTests` |
 | T6 | Webhook duplicado | mesmo `event id` 2x → 200 ambos, um único efeito, métrica de duplicado | integration | 5/7 |
 | T7 | Webhook fora de ordem | `delivered` chega antes de `pickup` → estado vai a `Delivered` e o `pickup` posterior é registrado `Applied=false` (`stale`) | integration | 7 |
 | T8 | Webhook assinatura | assinatura inválida/timestamp velho → 401, nada persistido | integration | 5/7 |
@@ -62,7 +62,7 @@ concorrência, resiliência). Não há meta de quantidade nem de cobertura numé
 | T13 | Outbox retry/Failed | handler lança 3x → `attempts=3`, `Failed`; reprocessar via endpoint → sucesso | integration | 8 |
 | T14 | Consumidor idempotente | mesma mensagem SQS entregue 2x → um efeito | integration (LocalStack) | 9 |
 | T15 | DLQ | mensagem envenenada → DLQ após `maxReceiveCount` | integration (LocalStack) | 9 |
-| T16 | Autorização | cliente A `GET /orders/{id de B}` → 404/403 (decidir: 404 para não vazar existência); operador → 200 | integration | 4/10 |
+| T16 | Autorização | cliente A `GET /orders/{id de B}` → 404 (não vaza existência); operador → 200 | integration | 4 ✔ `Customer_CannotSeeOrCancel_AnotherCustomersOrder`, `Operator_SeesEveryOrder_AndCancelsWithOperatorAction` |
 | T17 | Falha permanente de pagamento | `card_declined` → `Payment Failed`, `Order Cancelled(PaymentFailed)`, estoque liberado, 1 outbox `OrderCancelled` | integration | 5 |
 | T18 | Reconciliação | pagamento `Pending` há > X → job consulta provider (`paid`) → estado corrigido | integration | 5 |
 | T19 | Trace de ponta a ponta | um pedido gera spans API→outbox→worker→provider com o mesmo `trace_id` | integration (exporter in-memory) | 11 |

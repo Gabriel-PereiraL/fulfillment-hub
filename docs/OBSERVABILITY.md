@@ -36,10 +36,10 @@ Alternativa registrada: `grafana/otel-lgtm` (Grafana + Tempo + Prometheus + Loki
 |---|---|---|---|---|
 | `http.server.request.duration` | histograma | route, status | nativa ASP.NET Core | 1 |
 | `http.client.request.duration` | histograma | `server.address`, status | nativa HttpClient | 1 |
-| `fh.orders.placed` / `fh.orders.cancelled` | counter | `reason` (cancel) | Application | 4 |
+| `fh.orders.placed` / `fh.orders.cancelled` | counter | `reason` (cancel) | Application (`OrdersMetrics`) | 4 ✔ |
 | `fh.order.time_to_final` | histograma (s) | `final_status` | Worker | 8 |
-| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 |
-| `fh.stock.reservation_conflicts` | counter | — | Application | 4 |
+| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 — **pendente** (só log `4100` por enquanto; adicionar contador na Fase 11) |
+| `fh.stock.reservation_conflicts` | counter | `kind` (`insufficient_stock`, `concurrent_update`) | Application (`OrdersMetrics`) | 4 ✔ |
 | `fh.provider.request.duration` | histograma | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5–6 |
 | `fh.provider.retries` | counter | `provider`, `operation`, `reason` | Polly telemetry | 6 |
 | `fh.provider.circuit_state` | gauge (0/1/2) | `provider` | Polly telemetry | 6 |

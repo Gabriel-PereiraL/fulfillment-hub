@@ -27,10 +27,10 @@ Usuário malicioso autenticado (cliente), atacante anônimo na internet, insider
 | Ameaça | Categoria | Mitigação planejada | Evidência (fase) |
 |---|---|---|---|
 | Webhook forjado confirma pagamento | Spoofing/Tampering | HMAC-SHA256 com chave por provider, comparação em tempo constante, tolerância de timestamp (5 min), dedup por event id, **e** estado verificado por reconciliação (`GET` no provider) antes de ações irreversíveis de alto valor (decisão: reconciliar sempre que webhook mudar para `paid`? — ver D-P5) | 5/7/10 |
-| Cliente lê/cancela pedido de outro | Elevation/Information disclosure | autorização por recurso no caso de uso (`order.CustomerId == principal.CustomerId`), 404 em vez de 403 para não revelar existência; testes T16 | 4/10 |
+| Cliente lê/cancela pedido de outro | Elevation/Information disclosure | autorização por recurso no caso de uso (`order.CustomerId == principal.CustomerId`), 404 em vez de 403 para não revelar existência; testes T16 | **4 ✔** (`OrderQueries.Visible()`, `CancelOrderHandler`; `Customer_CannotSeeOrCancel_AnotherCustomersOrder`) |
 | Credential stuffing no login | Spoofing/DoS | rate limit por IP+conta, hash PBKDF2 (`PasswordHasher`), mensagens genéricas, lockout progressivo (P2) | **3 ✔** (rate limit por IP, PBKDF2, 401 idêntico + decoy; lockout por conta pendente) |
 | Token JWT roubado | Spoofing | expiração curta (15 min), `aud`/`iss` validados, HTTPS obrigatório fora de dev, sem token em logs/URLs; refresh token com rotação (P2) | **3 ✔** (exp 15 min, iss/aud/alg validados, sem token em logs; HTTPS/HSTS na Fase 10) |
-| Overposting (`status`, `total`, `customerId` no body) | Tampering | DTOs de request sem esses campos; valores derivados do servidor; testes | 4 |
+| Overposting (`status`, `total`, `customerId` no body) | Tampering | DTOs de request sem esses campos; valores derivados do servidor; testes | **4 ✔** (`PlaceOrderRequest`; campos extras ignorados, teste dedicado) |
 | SQL injection | Tampering | EF Core parametrizado; `FromSql` só interpolado; sem concatenação; analyzer EF | 2 |
 | Flood de webhooks/pedidos | DoS | rate limiting (`AddRateLimiter`), limite de corpo, timeouts, fila absorve picos | 10 |
 | SSRF | Tampering | o sistema **nunca** chama URLs fornecidas por usuários; URLs de providers são configuração validada (allowlist de hosts) | 10 |
@@ -86,10 +86,10 @@ Proibido em qualquer lugar: secrets em código, commits, logs, URLs, mensagens d
 
 | # | Categoria | Aplicação no projeto | Status |
 |---|---|---|---|
-| A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | **parcial (Fase 3)**: `FallbackPolicy` ✔, policies por papel com testes 401/403 ✔; autorização por recurso na Fase 4 |
+| A01 | Broken Access Control | negar por padrão, policies, autorização por recurso, testes T16, 404 vs 403 | **implementado (Fases 3–4)**: `FallbackPolicy` ✔, policies por papel ✔, autorização por recurso em `OrderQueries`/`CancelOrderHandler` (pedido alheio → 404, sem liberar estoque) com `OrderAccessAndCancelTests` ✔ |
 | A02 | Cryptographic Failures | PBKDF2 para senhas, HMAC-SHA256 webhooks, TLS fora de dev, JWT key ≥ 256 bits, sem algoritmos "none" | **parcial (Fase 3)**: PBKDF2-HMAC-SHA512 ✔, chave JWT ≥ 32 bytes validada no start ✔, `ValidAlgorithms=[HS256]` ✔; TLS/HMAC webhooks pendentes |
 | A03 | Injection | EF Core parametrizado, validação de entrada, sem SQL dinâmico, sem `Process.Start` | planejado |
-| A04 | Insecure Design | threat model, idempotência, limites (itens por pedido, tamanho de corpo), reconciliação | planejado |
+| A04 | Insecure Design | threat model, idempotência, limites (itens por pedido, tamanho de corpo), reconciliação | **parcial (Fase 4)**: idempotência real com chave por usuário ✔ (ADR-010), limites 1–50 itens / 1–99 unidades ✔, overposting: DTOs sem `status/total/customerId` e teste `PlaceOrder_IgnoresServerControlledFields` ✔; limite de corpo e reconciliação pendentes |
 | A05 | Security Misconfiguration | headers (`X-Content-Type-Options`, `Referrer-Policy`, CSP na Admin), CORS explícito, erros sem stack fora de dev, OpenAPI só em dev, containers não-root | planejado |
 | A06 | Vulnerable Components | CPM, `--vulnerable`, dependency review, Trivy, imagens base atualizadas | planejado |
 | A07 | Identification & Authentication Failures | rate limit de login, mensagens genéricas, exp curta, sem enumeração de usuários | **implementado (Fase 3)**: 5/min por IP ✔, 401 idêntico + decoy hash ✔, exp 15 min ✔, testes `AuthEndpointsTests` |

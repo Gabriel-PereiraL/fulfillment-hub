@@ -16,7 +16,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-006 | `DeliveryQuote`, `Delivery` + `DeliveryEvent` + regra de ordem canônica | 2 | P0 | done |
 | BL-007 | `User`, `Role` | 2 | P0 | done |
 | BL-008 | Testes de unidade de todas as invariantes (DOMAIN.md §10) | 2 | P0 | done |
-| BL-009 | Decidir D-P3 (taxa de entrega no pedido) e ajustar `Order`/`Payment` | 4 | P0 | todo |
+| BL-009 | Decidir D-P3 (taxa de entrega no pedido) e ajustar `Order`/`Payment` | 4 | P0 | done |
 | BL-010 | Número de pedido legível via sequence | 2 | P1 | done |
 
 ## API
@@ -27,12 +27,12 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-021 | Health checks `/health/live`, `/health/ready` | 1 | P0 | done |
 | BL-022 | Correlation id middleware (`X-Correlation-Id`) | 1 | P0 | done |
 | BL-023 | `POST /auth/login`, `GET /me` | 3 | P0 | done |
-| BL-024 | `POST /orders` com filtro `Idempotency-Key` + `IdempotencyRecord` | 4 | P0 | todo |
-| BL-025 | `GET /orders/{id}`, `GET /orders` (keyset pagination), autorização por recurso (cliente só vê os seus) | 4 | P0 | todo |
-| BL-026 | `POST /orders/{id}/cancel` | 4 | P0 | todo |
+| BL-024 | `POST /orders` com filtro `Idempotency-Key` + `IdempotencyRecord` | 4 | P0 | done |
+| BL-025 | `GET /orders/{id}`, `GET /orders` (keyset pagination), autorização por recurso (cliente só vê os seus) | 4 | P0 | done |
+| BL-026 | `POST /orders/{id}/cancel` | 4 | P0 | done |
 | BL-027 | `POST /webhooks/payments` (assinatura, dedup, 200 rápido) | 5 | P0 | todo |
 | BL-028 | `POST /webhooks/deliveries` | 7 | P0 | todo |
-| BL-029 | Endpoints de catálogo (Admin CRUD de produtos) | 4 | P1 | todo |
+| BL-029 | Endpoints de catálogo: `GET /products` (**done**, Fase 4); CRUD admin de produtos pendente | 4/17 | P1 | doing |
 | BL-030 | Endpoints de operação: reprocessar outbox/webhook, reconciliar, cancelar entrega | 8–9 | P1 | todo |
 | BL-031 | Validação nativa .NET 10 (`AddValidation`) nos requests | 4 | P0 | done |
 | BL-032 | Versionamento de API (`/v1`) — decidir se via path fixo | 4 | P2 | todo |
@@ -92,7 +92,7 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 | BL-102 | `PasswordHasher<T>` (PBKDF2) e política mínima de senha | 3 | P0 | done |
 | BL-103 | Rate limiting: login (**done**, Fase 3), webhooks e `POST /orders` (Fase 10) | 3/10 | P0 | doing |
 | BL-104 | Assinatura HMAC de webhooks (tempo constante) + tolerância de timestamp + limite de corpo | 5/7 | P0 | todo |
-| BL-105 | Autorização por recurso (cliente só acessa os próprios pedidos) + testes de broken access control | 4/10 | P0 | todo |
+| BL-105 | Autorização por recurso (cliente só acessa os próprios pedidos) + testes de broken access control | 4/10 | P0 | done |
 | BL-106 | Security headers, CORS explícito, HTTPS redirection/HSTS (fora do dev) | 10 | P0 | todo |
 | BL-107 | Threat model revisado com evidências; checklist OWASP Top 10 preenchido | 10 | P0 | todo |
 | BL-108 | Redação de PII em logs (telefone/e-mail mascarados), sem corpo de webhook nos logs | 10 | P0 | todo |
@@ -119,14 +119,14 @@ Status: `todo` · `doing` · `done` · `dropped`. IDs estáveis (`BL-xxx`) para 
 |---|---|---|---|---|
 | BL-140 | Projetos de teste + xUnit v3 + Shouldly + Testcontainers + `WebApplicationFactory` base | 1 | P0 | done |
 | BL-141 | ArchitectureTests (NetArchTest): dependências, convenções (`sealed`, sufixos) | 1 | P0 | done |
-| BL-142 | Idempotência de `POST /orders` (3 cenários) | 4 | P0 | todo |
-| BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | todo |
+| BL-142 | Idempotência de `POST /orders` (3 cenários) | 4 | P0 | done |
+| BL-143 | Race condition de estoque (falha sem token, passa com) | 4 | P0 | done |
 | BL-144 | Webhook duplicado / atrasado / fora de ordem (pagamento e entrega) | 5/7 | P0 | todo |
 | BL-145 | Matriz de retry com `HttpMessageHandler` fake; circuit breaker abre/fecha | 6 | P0 | todo |
 | BL-146 | Outbox: perda zero, retry, `Failed` | 8 | P0 | todo |
 | BL-147 | SQS: DLQ após N, consumidor idempotente | 9 | P0 | todo |
 | BL-148 | E2E com compose: 3 fluxos | 12 | P0 | todo |
-| BL-149 | Testes de autorização: 401/403 por papel (**done**, Fase 3); acesso cruzado por recurso (Fase 4) | 3/10 | P0 | doing |
+| BL-149 | Testes de autorização: 401/403 por papel (Fase 3) e acesso cruzado por recurso (Fase 4) | 3/4 | P0 | done |
 | BL-150 | Convergência com `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
 | BL-151 | Stryker (mutation) em Domain | 12 | P3 | todo |
 

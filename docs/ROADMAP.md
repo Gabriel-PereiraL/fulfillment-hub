@@ -13,7 +13,7 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 | 1 | Solution .NET + foundation | **done (2026-09-18)** | Gate 1 |
 | 2 | Domínio e banco | **done (2026-09-18)** | Gate 2 |
 | 3 | Identity + Auth (JWT, roles) | **done (2026-09-18)** | Gate 3 |
-| 4 | Orders (API + idempotência + concorrência de estoque) | todo | Gate 4 |
+| 4 | Orders (API + idempotência + concorrência de estoque) | **done (2026-09-18)** | Gate 4 |
 | 5 | Payments (simulator + integração + webhook + reconciliação) | todo | Gate 5 |
 | 6 | Delivery provider simulator (Uber-like) + integração de saída resiliente | todo | Gate 6 |
 | 7 | Webhooks de entrega + idempotência + eventos fora de ordem | todo | Gate 7 |
@@ -70,11 +70,12 @@ do usuário para ações externas (GitHub, conta AWS, custos).
 **Riscos**: tentação de usar ASP.NET Identity completo — não; só `PasswordHasher<T>`.
 **Resultado (2026-09-18)**: JWT HS256 via `JsonWebTokenHandler`/`AddJwtBearer`, `PasswordHasher<User>`, `FallbackPolicy` + 3 policies, login com rate limit (5/min/IP), `GET /me`, `GET /users/{id}` (AdminOnly), seed de desenvolvimento, validação nativa .NET 10; 24 testes novos (143 no total). Evidências em SECURITY.md §2. Rota inexistente para anônimo agora responde 401 (D-33).
 
-## Fase 4 — Orders
+## Fase 4 — Orders — `done`
 **Objetivo**: criar/consultar/cancelar pedidos com idempotência real e concorrência de estoque demonstrada.
 **Tasks**: `POST /orders` (Idempotency-Key filtro + `IdempotencyRecord`), `GET /orders/{id}`, `GET /orders` (paginação keyset), `POST /orders/{id}/cancel`; reserva de estoque com `xmin`; histórico de status; decisão D-P3 (taxa de entrega no pedido); testes: idempotência (mesma chave → mesma resposta; hash diferente → 422; concorrente → 409), race de estoque (N tarefas paralelas → nunca negativo), transições.
 **Gate 4**: cenário de race condition tem teste que falha sem o token de concorrência e passa com ele; idempotência coberta; OpenAPI com todos os endpoints; BACKLOG P0 de Orders fechado.
 **Riscos**: idempotência com respostas grandes — armazenar body (jsonb) com TTL.
+**Resultado (2026-09-18)**: `POST/GET/LIST /api/v1/orders`, `POST /orders/{id}/cancel`, `GET /api/v1/products`; filtro `Idempotency-Key` + `idempotency_records` (ADR-010 implementação); reserva de estoque com `xmin` + retry limitado; autorização por recurso; keyset por número do pedido; 17 testes de integração novos (160 no total). T4 verificado falhando sem o token (3/3). D-P3 parcialmente resolvida (D-36: taxa nula até a Fase 6). Descobertas: chaves client-side precisam de `ValueGeneratedNever` (D-39); coleções incluídas não vêm ordenadas (D-40).
 
 ## Fase 5 — Payments
 **Objetivo**: provider de pagamento simulado + integração + webhook idempotente + reconciliação + falhas temporárias/permanentes.

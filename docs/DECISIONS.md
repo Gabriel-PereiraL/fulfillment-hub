@@ -61,6 +61,12 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 | D-33 | `FallbackPolicy` = autenticado se aplica também a rotas inexistentes: anônimo recebe 401, autenticado recebe 404 | comportamento nativo do middleware de autorização; não revela a superfície de rotas a anônimos; documentado em SECURITY.md §2 | 2026-09-18 |
 | D-34 | Falhas de login indistinguíveis (401 + `auth.invalid_credentials`) e verificação contra *decoy hash* quando não há usuário | evitar enumeração por mensagem e por tempo (OWASP A07); custo de 1 PBKDF2 por tentativa, limitado pelo rate limit | 2026-09-18 |
 | D-35 | Validação de request com a validação nativa de Minimal APIs do .NET 10 (`AddValidation` + DataAnnotations); confirmada funcional (400 ProblemDetails) | zero dependências; suficiente para forma/obrigatoriedade (D-10 confirmada na prática) | 2026-09-18 |
+| D-36 | D-P3 resolvida para a Fase 4: `DeliveryFee` permanece nulo até `MarkDeliveryRequested` (Fase 6); `POST /orders` não cota entrega | não existe provider antes da Fase 6; cotar no pedido seria acoplar o `POST /orders` à latência do provider — reavaliar na Fase 6 com o simulator (custo/benefício de cotação síncrona) | 2026-09-18 |
+| D-37 | Idempotência: fingerprint = JSON canônico do request vinculado (não bytes brutos); respostas < 500 são reproduzidas (inclusive 409); chave liberada em falha inesperada | ver ADR-010 "Implementação" | 2026-09-18 |
+| D-38 | Paginação keyset pelo `Order.Number` (bigint monotônico da sequence) com cursor base64url opaco | única coluna, indexada, sem tie-breaker; mais simples que (created_at, id) e Guid v7 não é comparável cronologicamente no .NET | 2026-09-18 |
+| D-39 | Toda chave gerada pelo cliente (`Guid` v7 no domínio) é configurada `ValueGeneratedNever()` | por convenção o EF trata PK `Guid` como `ValueGeneratedOnAdd`; entidade filha nova descoberta via navegação com chave "já definida" era enviada como UPDATE (0 linhas → `DbUpdateConcurrencyException`) | 2026-09-18 |
+| D-40 | Coleções históricas dos agregados (`Order.StatusHistory`, `Payment.Attempts`, `Delivery.Events`) são ordenadas pelo agregado, não pela ordem do banco | `Include` não garante ordem das linhas; teste intermitente revelou | 2026-09-18 |
+| D-41 | Reserva de estoque com retry limitado (3×) em `DbUpdateConcurrencyException` antes de responder 409 | conflitos de `xmin` são transitórios; a maioria dos perdedores recebe `insufficient_stock` determinístico em vez de um 409 "tente de novo" | 2026-09-18 |
 
 ## Decisões pendentes
 
@@ -68,7 +74,7 @@ contexto (1 desenvolvedor, portfólio C#/.NET, monólito modular, custo conscien
 |---|---|---|---|---|
 | D-P1 | Idioma final da documentação pública | pt-BR / inglês / ambos | traduzir README + docs principais para inglês na Fase 19 se o alvo incluir vagas internacionais; senão manter pt-BR | Fase 19 |
 | D-P2 | Admin: projeto separado (`FulfillmentHub.Admin`) ou hospedar Blazor dentro da Api | separado / junto | **separado** (ciclo de deploy e superfície de ataque distintos) | Fase 17 |
-| D-P3 | Momento de cobrar a taxa de entrega | cotar antes do pedido / cobrar depois / taxa fixa | **cotar no `POST /orders`** (síncrono) e congelar a taxa | Fase 4 |
+| D-P3 | Momento de cobrar a taxa de entrega | cotar antes do pedido / cobrar depois / taxa fixa | **parcial (D-36)**: Fase 4 mantém `DeliveryFee` nulo até a entrega; decidir cotação síncrona vs. taxa estimada na Fase 6 | Fase 6 |
 | D-P4 | Ferramenta de carga | k6 / NBomber | NBomber (.NET-nativo, testes em C#) — mas k6 é mais reconhecido; decidir pelo que gera melhor evidência | Fase 18 |
 | D-P5 | Reconciliar via `GET` antes de aplicar webhook `paid`/`refunded` | sim / não | sim (defesa em profundidade contra webhook forjado) | Fase 5 |
 | D-P6 | Rede AWS em dev: NAT / VPC endpoints / subnets públicas | A / B / C | C em dev com flag para B | Fase 15 |
