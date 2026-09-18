@@ -3,7 +3,6 @@ using FulfillmentHub.Api.Idempotency;
 using FulfillmentHub.Api.Identity;
 using FulfillmentHub.Application.Common;
 using FulfillmentHub.Application.Orders;
-using FulfillmentHub.Application.Payments;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace FulfillmentHub.Api.Orders;
@@ -54,8 +53,6 @@ public static class OrdersEndpoints
     private static async Task<Results<Created<OrderDto>, ProblemHttpResult>> PlaceOrderAsync(
         PlaceOrderRequest request,
         PlaceOrderHandler handler,
-        CreatePaymentForOrderHandler createPayment,
-        OrderQueries queries,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -75,20 +72,13 @@ public static class OrdersEndpoints
                 address.Longitude),
             httpContext.Request.Headers[IdempotencyFilter<PlaceOrderRequest, OrderDto>.HeaderName].FirstOrDefault());
 
+        // The order is committed together with its OrderPlaced event (ADR-004); the payment is created by the Worker
+        // from the outbox, so the response is the order as accepted (Created) and the status catches up asynchronously.
         var result = await handler.HandleAsync(command, cancellationToken);
 
-        if (!result.IsSuccess)
-        {
-            return result.Failure.ToProblem();
-        }
-
-        // Phase 5: the payment is initiated in-process right after the order is committed. Its outcome never fails the
-        // order creation (the order is already durable); a transient provider failure is picked up by reconciliation.
-        // Phase 8 moves this behind the transactional outbox.
-        await createPayment.HandleAsync(new CreatePaymentForOrderCommand(result.Value.Id), cancellationToken);
-
-        var order = await queries.GetByIdAsync(result.Value.Id, cancellationToken) ?? result.Value;
-        return TypedResults.Created($"/api/v1/orders/{order.Id}", order);
+        return result.Match<Results<Created<OrderDto>, ProblemHttpResult>>(
+            order => TypedResults.Created($"/api/v1/orders/{order.Id}", order),
+            failure => failure.ToProblem());
     }
 
     private static async Task<Results<Ok<OrderDto>, NotFound>> GetByIdAsync(

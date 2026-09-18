@@ -1,3 +1,4 @@
+using FulfillmentHub.Api.Admin;
 using FulfillmentHub.Api.Catalog;
 using FulfillmentHub.Api.ErrorHandling;
 using FulfillmentHub.Api.Identity;
@@ -84,6 +85,7 @@ app.MapProductsEndpoints();
 app.MapOrdersEndpoints();
 app.MapPaymentWebhooksEndpoints();
 app.MapDeliveryWebhooksEndpoints();
+app.MapOutboxAdminEndpoints();
 
 app.Run();
 

@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using FulfillmentHub.Application.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace FulfillmentHub.Api.Identity;
@@ -20,7 +21,12 @@ public static class ApiSecurityServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
-        services.AddRateLimiter(options =>
+        services.AddOptions<RateLimitOptions>()
+            .BindConfiguration(RateLimitOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<RateLimiterOptions>().Configure<IOptions<RateLimitOptions>>((options, limits) =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
@@ -31,7 +37,7 @@ public static class ApiSecurityServiceCollectionExtensions
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 120,
+                        PermitLimit = limits.Value.WebhooksPerMinute,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                     }));
@@ -41,11 +47,12 @@ public static class ApiSecurityServiceCollectionExtensions
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 5,
+                        PermitLimit = limits.Value.LoginPerMinute,
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                     }));
         });
+        services.AddRateLimiter(static _ => { });
 
         return services;
     }

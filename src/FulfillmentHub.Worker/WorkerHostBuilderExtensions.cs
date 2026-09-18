@@ -1,5 +1,6 @@
 using FulfillmentHub.Application;
 using FulfillmentHub.Application.Identity;
+using FulfillmentHub.Infrastructure.Outbox;
 using FulfillmentHub.Infrastructure.Persistence;
 using FulfillmentHub.Infrastructure.Providers.Deliveries;
 using FulfillmentHub.Infrastructure.Providers.Payments;
@@ -20,6 +21,7 @@ public static class WorkerHostBuilderExtensions
         builder.Services.AddFulfillmentHubPaymentProvider();
         builder.Services.AddFulfillmentHubDeliveryProvider();
         builder.Services.AddFulfillmentHubApplication();
+        builder.Services.AddFulfillmentHubOutboxPublisher();
         builder.Services.AddScoped<ICurrentUser, AnonymousCurrentUser>();
 
         builder.Services.AddOptions<ReconciliationOptions>()
@@ -37,6 +39,11 @@ public static class WorkerHostBuilderExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        builder.Services.AddOptions<OutboxPublisherOptions>()
+            .BindConfiguration(OutboxPublisherOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         builder.Services.AddOptions<WorkerOptions>()
             .BindConfiguration(WorkerOptions.SectionName)
             .ValidateDataAnnotations()
@@ -45,6 +52,7 @@ public static class WorkerHostBuilderExtensions
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<WorkerMetrics>();
         builder.Services.AddHostedService<HeartbeatService>();
+        builder.Services.AddHostedService<OutboxPublisherService>();
         builder.Services.AddHostedService<PaymentReconciliationService>();
         builder.Services.AddHostedService<DeliveryRequestService>();
         builder.Services.AddHostedService<DeliveryReconciliationService>();
