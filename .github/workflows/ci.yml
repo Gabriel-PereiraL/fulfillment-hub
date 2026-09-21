@@ -1,6 +1,9 @@
 # Continuous integration (docs/DEPLOYMENT.md §4, D-81). Every step is the same command a developer runs locally
 # (docs/DEVELOPMENT.md §3); nothing is relaxed to make CI green. No repository secrets are needed: the integration
 # tests create their own PostgreSQL/LocalStack containers with Testcontainers and generate their own keys.
+# Every action is pinned to a full commit SHA (the tag it corresponds to is in the trailing comment) and the Trivy image
+# to a tag + digest, so nothing the pipeline runs can change under a moved tag. Bumps are deliberate: update the SHA and
+# the comment together (docs/SECURITY.md §6.5).
 name: CI
 
 on:
@@ -31,10 +34,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up .NET (from global.json)
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           global-json-file: global.json
 
@@ -64,7 +67,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: test-results
           path: |
@@ -80,10 +83,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
         with:
           fail-on-severity: moderate
 
@@ -93,12 +96,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -108,10 +111,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up .NET (from global.json)
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           global-json-file: global.json
 
@@ -137,10 +140,14 @@ jobs:
           done
 
       - name: Trivy (HIGH/CRITICAL, fixed vulnerabilities fail the job)
+        env:
+          # Pinned by tag *and* index digest so the scanner itself is not a mutable dependency; this digest is the one
+          # `latest` resolved to in the green run 35624106304 (2026-09-21). Bump deliberately, together with the comment.
+          TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
         run: |
           for image in fulfillmenthub/api:local fulfillmenthub/worker:local fulfillmenthub/simulator:local; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+              "$TRIVY_IMAGE" image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done
 
       - name: Start the full stack

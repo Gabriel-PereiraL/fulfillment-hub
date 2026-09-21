@@ -1,6 +1,7 @@
 # Static application security testing (SAST) with GitHub CodeQL — docs/SECURITY.md §6, D-81.
 # Results land in Security → Code scanning alerts; pull requests get inline annotations. The .NET compiler analyzers
 # that run in ci.yml are *not* SAST; this workflow is.
+# Actions are pinned to full commit SHAs (tag in the trailing comment) — same policy as ci.yml, docs/SECURITY.md §6.5.
 name: CodeQL (SAST)
 
 on:
@@ -37,15 +38,15 @@ jobs:
       actions: read            # required by the action to read workflow metadata
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up .NET (from global.json)
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           global-json-file: global.json
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           languages: csharp
           build-mode: manual
@@ -62,6 +63,6 @@ jobs:
         run: dotnet build FulfillmentHub.slnx --configuration Release --no-restore -p:UseSharedCompilation=false
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           category: "/language:csharp"
