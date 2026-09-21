@@ -1,0 +1,103 @@
+# Continuous integration (docs/DEPLOYMENT.md §4, D-81). Every step is the same command a developer runs locally
+# (docs/DEVELOPMENT.md §3); nothing is relaxed to make CI green. No repository secrets are needed: the integration
+# tests create their own PostgreSQL/LocalStack containers with Testcontainers and generate their own keys.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  build-test:
+    name: Build · analyzers · format · vulnerable packages · tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET (from global.json)
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore FulfillmentHub.slnx
+
+      - name: Build (Release, TreatWarningsAsErrors + analyzers)
+        run: dotnet build FulfillmentHub.slnx --configuration Release --no-restore
+
+      - name: Format check (.editorconfig)
+        run: dotnet format FulfillmentHub.slnx --verify-no-changes --no-restore
+
+      - name: Vulnerable packages (direct and transitive)
+        # `dotnet list package --vulnerable` exits 0 even when it finds advisories; the table header "Severity"
+        # only appears when at least one vulnerable package is listed.
+        run: |
+          dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive | tee vulnerable-packages.txt
+          if grep -q "Severity" vulnerable-packages.txt; then
+            echo "::error::Vulnerable NuGet packages found — see the step log"
+            exit 1
+          fi
+
+      - name: Test (unit · architecture · integration with Testcontainers)
+        run: >-
+          dotnet test --solution FulfillmentHub.slnx --configuration Release --no-build
+          -- --report-xunit-junit --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results
+          path: |
+            TestResults/**/*.xml
+            vulnerable-packages.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependency-review:
+    name: Dependency review (pull requests)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  secrets:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

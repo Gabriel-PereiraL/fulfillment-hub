@@ -1,0 +1,67 @@
+# Static application security testing (SAST) with GitHub CodeQL — docs/SECURITY.md §6, D-81.
+# Results land in Security → Code scanning alerts; pull requests get inline annotations. The .NET compiler analyzers
+# that run in ci.yml are *not* SAST; this workflow is.
+name: CodeQL (SAST)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so new queries shipped by GitHub are run against unchanged code (Mondays 06:17 UTC).
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to code scanning
+      actions: read            # required by the action to read workflow metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET (from global.json)
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
+          # security-extended = default security queries + lower-precision/lower-severity security queries.
+          queries: security-extended
+
+      - name: Restore
+        run: dotnet restore FulfillmentHub.slnx
+
+      - name: Build under the CodeQL tracer
+        # An explicit build (instead of autobuild / build-mode none) so the extractor sees exactly the compilation
+        # the project defines: .NET 10 SDK from global.json, TreatWarningsAsErrors, all six source projects and the
+        # test projects. UseSharedCompilation=false keeps every compiler invocation visible to the tracer.
+        run: dotnet build FulfillmentHub.slnx --configuration Release --no-restore -p:UseSharedCompilation=false
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:csharp"
