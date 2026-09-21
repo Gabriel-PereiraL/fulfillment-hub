@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# FulfillmentHub API — multi-stage, non-root, Alpine runtime (docs/DEPLOYMENT.md §2). Build context: repository root.
+#   docker build -f docker/Dockerfile.api -t fulfillmenthub/api:local .
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+WORKDIR /src
+
+# Restore first, from the lock files, so the NuGet layer is cached until a dependency really changes (BL-169).
+COPY global.json Directory.Build.props Directory.Packages.props FulfillmentHub.slnx .editorconfig ./
+COPY src/FulfillmentHub.Domain/FulfillmentHub.Domain.csproj src/FulfillmentHub.Domain/packages.lock.json src/FulfillmentHub.Domain/
+COPY src/FulfillmentHub.Application/FulfillmentHub.Application.csproj src/FulfillmentHub.Application/packages.lock.json src/FulfillmentHub.Application/
+COPY src/FulfillmentHub.Infrastructure/FulfillmentHub.Infrastructure.csproj src/FulfillmentHub.Infrastructure/packages.lock.json src/FulfillmentHub.Infrastructure/
+COPY src/FulfillmentHub.Api/FulfillmentHub.Api.csproj src/FulfillmentHub.Api/packages.lock.json src/FulfillmentHub.Api/
+RUN dotnet restore src/FulfillmentHub.Api/FulfillmentHub.Api.csproj --locked-mode
+
+COPY src/ src/
+RUN dotnet publish src/FulfillmentHub.Api/FulfillmentHub.Api.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+# ICU for culture-aware formatting (the app does not run in invariant-globalization mode).
+RUN apk add --no-cache icu-libs && rm -rf /var/cache/apk/*
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_ENVIRONMENT=Production
+WORKDIR /app
+COPY --from=build /app .
+# Non-root (uid 1654 exists in the official images); port 8080 needs no privileges.
+USER app
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "FulfillmentHub.Api.dll"]

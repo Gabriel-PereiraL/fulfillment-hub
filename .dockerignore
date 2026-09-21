@@ -1,0 +1,20 @@
+# Build context = repository root. Only what the multi-stage Dockerfiles need reaches the daemon.
+**/bin/
+**/obj/
+**/TestResults/
+.git/
+.github/
+.vs/
+.ai/
+.claude/
+CLAUDE.md
+.env
+.env.*
+!.env.example
+docs/
+observability/
+scripts/
+tests/
+*.md
+docker-compose*.yml
+**/Dockerfile

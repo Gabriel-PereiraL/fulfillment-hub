@@ -22,7 +22,7 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **done (2026-09-21)** | Gate 10 |
 | 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **in-progress** (alerting subset in the hardening track) | Gate 11 |
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | **done (2026-09-21)** | Gate 12 |
-| 13 | Docker images + full compose | todo | Gate 13 |
+| 13 | Docker images + full compose | **done (2026-09-21)** | Gate 13 |
 | 14 | CI (GitHub Actions) | **in-progress** (CI + SAST subset in the hardening track) | Gate 14 |
 | 15 | AWS IaC (Terraform) — **requires an AWS account and a cost decision** | todo | Gate 15 |
 | 16 | Cloud deployment (ECS Fargate, RDS, SQS, Secrets, CloudWatch alerts) | todo | Gate 16 |
@@ -163,9 +163,10 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 **Gate 12**: E2E green; TEST_STRATEGY.md with the "scenario → test" matrix.
 **Result**: black-box E2E project (3 flows, 3/3 green against the running stack, self-skipping otherwise), provider contract tests (11 pairs + negative self-check), chaos convergence test (30 % provider 500s, 8 orders all delivered, faults proven), test-side races of BL-152 fixed; Stryker left as optional (P3). Matrix T19–T23 in TEST_STRATEGY.md §3. Suite: 245 tests + 3 E2E.
 
-## Phase 13 — Docker images + full compose
+## Phase 13 — Docker images + full compose — `done` (2026-09-21)
 **Goal**: multi-stage Dockerfiles (Api, Worker, Simulator, Admin), non-root user, healthcheck; compose brings everything up.
 **Gate 13**: `docker compose up --build` → the E2E flow passes against containers; images < 250 MB; local scan (Trivy/`docker scout`) without criticals.
+**Result**: `docker/Dockerfile.{api,worker,simulator}` (sdk-alpine build with locked restore → aspnet/runtime-alpine + ICU, `USER app`), compose profile `app` (`migrate` and `seed` one-off containers, healthchecks via BusyBox `wget`, secrets from `.env`), `FulfillmentHub.Api.dll migrate` as the explicit migration task; images 209/168/189 MB; Trivy 0 HIGH/CRITICAL; E2E 3/3 against the containers (DEPLOYMENT.md §2–§3). The Admin image waits for Phase 17.
 
 ## Phase 14 — CI (GitHub Actions)
 **Goal**: restore/build/analyzers/unit/integration (Testcontainers)/security scan (CodeQL, dependency review, gitleaks, Trivy)/image build/artifact pipeline.

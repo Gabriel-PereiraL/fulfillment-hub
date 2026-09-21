@@ -2,6 +2,33 @@
 # with `dotnet run` until Phase 13 adds their images. Values come from .env (see .env.example) — never commit .env.
 name: fulfillmenthub
 
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Profile "app" (Phase 13): the whole system in containers — `docker compose --profile deps --profile app up --build -d`.
+# Images come from docker/Dockerfile.* (multi-stage, non-root, Alpine). The hosts run with the Development environment
+# so the seed and the OpenAPI UI are available; secrets come from .env (JWT_SIGNING_KEY is required, the provider keys
+# default to the simulator's public dev-only values). `migrate` is the explicit one-off migration task (no automatic
+# Migrate() at startup); `seed` writes the fictional development data once the schema exists. docs/DEPLOYMENT.md §3.
+# ---------------------------------------------------------------------------------------------------------------------
+
+x-app-environment: &app-environment
+  Database__ConnectionString: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-fulfillmenthub};Username=${POSTGRES_USER:-fh};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+  Jwt__SigningKey: "${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env (at least 32 characters)}"
+  Providers__Payment__BaseUrl: "http://simulator:8080"
+  Providers__Payment__ApiKey: "${PAYMENT_API_KEY:-dev-only-payment-api-key}"
+  Providers__Payment__WebhookSigningKey: "${PAYMENT_WEBHOOK_SIGNING_KEY:-dev-only-payment-webhook-signing-key}"
+  Providers__Delivery__BaseUrl: "http://simulator:8080"
+  Providers__Delivery__ClientId: "${DELIVERY_CLIENT_ID:-dev-only-delivery-client-id}"
+  Providers__Delivery__ClientSecret: "${DELIVERY_CLIENT_SECRET:-dev-only-delivery-client-secret}"
+  Providers__Delivery__WebhookSigningKey: "${DELIVERY_WEBHOOK_SIGNING_KEY:-dev-only-delivery-webhook-signing-key}"
+  Messaging__Sqs__Enabled: "true"
+  Messaging__Sqs__ServiceUrl: "http://localstack:4566"
+  Messaging__Sqs__AccessKey: "test"
+  Messaging__Sqs__SecretKey: "test"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm:4317"
+  OTEL_METRIC_EXPORT_INTERVAL: "10000"
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -70,6 +97,86 @@ services:
     ports:
       - "${ASPIRE_DASHBOARD_PORT:-18888}:18888"
       - "${ASPIRE_OTLP_PORT:-4327}:18889"
+
+  migrate:
+    image: fulfillmenthub/api:local
+    build: { context: ., dockerfile: docker/Dockerfile.api }
+    profiles: ["app"]
+    command: ["migrate"]
+    environment:
+      <<: *app-environment
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  seed:
+    image: fulfillmenthub/api:local
+    profiles: ["app"]
+    command: ["seed"]
+    environment:
+      <<: *app-environment
+      ASPNETCORE_ENVIRONMENT: Development
+      Seed__AdminPassword: "${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env (12+ characters)}"
+      Seed__OperatorPassword: "${SEED_OPERATOR_PASSWORD:?set SEED_OPERATOR_PASSWORD in .env (12+ characters)}"
+      Seed__CustomerPassword: "${SEED_CUSTOMER_PASSWORD:?set SEED_CUSTOMER_PASSWORD in .env (12+ characters)}"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  simulator:
+    image: fulfillmenthub/simulator:local
+    build: { context: ., dockerfile: docker/Dockerfile.simulator }
+    profiles: ["app"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Simulator__Payments__WebhookUrl: "http://api:8080/api/v1/webhooks/payments"
+      Simulator__Delivery__WebhookUrl: "http://api:8080/api/v1/webhooks/deliveries"
+      Simulator__Payments__ApiKey: "${PAYMENT_API_KEY:-dev-only-payment-api-key}"
+      Simulator__Payments__WebhookSigningKey: "${PAYMENT_WEBHOOK_SIGNING_KEY:-dev-only-payment-webhook-signing-key}"
+      Simulator__Delivery__ClientId: "${DELIVERY_CLIENT_ID:-dev-only-delivery-client-id}"
+      Simulator__Delivery__ClientSecret: "${DELIVERY_CLIENT_SECRET:-dev-only-delivery-client-secret}"
+      Simulator__Delivery__WebhookSigningKey: "${DELIVERY_WEBHOOK_SIGNING_KEY:-dev-only-delivery-webhook-signing-key}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm:4317"
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+    ports:
+      - "${SIMULATOR_PORT:-5100}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  api:
+    image: fulfillmenthub/api:local
+    profiles: ["app"]
+    environment:
+      <<: *app-environment
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "${API_PORT:-5000}:8080"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+      simulator: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    image: fulfillmenthub/worker:local
+    build: { context: ., dockerfile: docker/Dockerfile.worker }
+    profiles: ["app"]
+    environment:
+      <<: *app-environment
+      DOTNET_ENVIRONMENT: Development
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+      simulator: { condition: service_healthy }
+    # No HTTP surface: liveness is the fh.worker.heartbeats metric and the WorkerHeartbeatMissing alert (D-86).
 
 volumes:
   postgres-data:

@@ -14,6 +14,7 @@ using FulfillmentHub.Infrastructure.Providers.Payments;
 using FulfillmentHub.Infrastructure.Seeding;
 using FulfillmentHub.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -56,6 +57,19 @@ if (builder.Environment.IsDevelopment())
 }
 
 var app = builder.Build();
+
+// `FulfillmentHub.Api.dll migrate`: applies pending EF Core migrations and exits — the explicit one-off task that the
+// compose "app" profile (and, later, an ECS run-task) executes before the hosts start. Never part of the normal
+// startup path (SECURITY.md T14: no automatic Migrate() when the API boots).
+if (args is ["migrate"])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<FulfillmentHubDbContext>();
+    var pending = string.Join(", ", await db.Database.GetPendingMigrationsAsync());
+    await db.Database.MigrateAsync();
+    StartupCommands.LogMigrated(app.Logger, pending.Length == 0 ? "(none)" : pending);
+    return;
+}
 
 // `dotnet run -- seed`: writes fictional development data and exits. Never part of the normal startup path.
 if (args is ["seed"])
@@ -108,3 +122,10 @@ app.Run();
 
 /// <summary>Exposed for integration tests (<c>WebApplicationFactory&lt;Program&gt;</c>).</summary>
 public partial class Program;
+
+/// <summary>Log messages of the one-off commands (`migrate`, `seed`) handled before the host starts.</summary>
+internal static partial class StartupCommands
+{
+    [LoggerMessage(EventId = 1100, Level = LogLevel.Information, Message = "Database migrated; applied: {Migrations}")]
+    public static partial void LogMigrated(ILogger logger, string migrations);
+}

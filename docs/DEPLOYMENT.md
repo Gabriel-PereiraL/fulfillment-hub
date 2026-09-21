@@ -10,16 +10,33 @@ Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is p
 | local | docker compose | Postgres 17 container | LocalStack SQS (Phase 9) | user-secrets / `.env` | Aspire Dashboard | `docker compose up -d` + `dotnet run` (or everything in containers in Phase 13) |
 | dev (cloud) | ECS Fargate + ALB | RDS PostgreSQL | SQS | Secrets Manager | CloudWatch + X-Ray | Terraform + CI/documented manual deploy |
 
-## 2. Docker images (Phase 13)
+## 2. Docker images — Implemented (Phase 13, 2026-09-21)
 
-- Multi-stage: `mcr.microsoft.com/dotnet/sdk:10.0` (build/test/publish) → `mcr.microsoft.com/dotnet/aspnet:10.0` (runtime); `USER app` (non-root, port 8080); `HEALTHCHECK` calling `/health/live`.
-- One image per host: `fh-api`, `fh-worker`, `fh-simulator`, `fh-admin`. Tag = short commit SHA + `latest` only in dev.
-- No secrets in build args/layers; `.dockerignore` excludes `.env*`, `bin/obj` and local tooling files.
-- Local scan: `docker scout cves` or Trivy before publishing.
+| Image | Dockerfile | Base (runtime) | Size | Notes |
+|---|---|---|---|---|
+| `fulfillmenthub/api` | `docker/Dockerfile.api` | `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` + `icu-libs` | 209 MB | `USER app` (uid 1654), port 8080, `ASPNETCORE_ENVIRONMENT=Production` by default; one-off commands `migrate` and `seed` (the latter Development-only) |
+| `fulfillmenthub/worker` | `docker/Dockerfile.worker` | `mcr.microsoft.com/dotnet/runtime:10.0-alpine` + `icu-libs` | 168 MB | no HTTP surface; liveness = `fh.worker.heartbeats` (D-86) |
+| `fulfillmenthub/simulator` | `docker/Dockerfile.simulator` | `aspnet:10.0-alpine` + `icu-libs` | 189 MB | development aid; dev-only keys live in its `appsettings.Development.json` |
 
-## 3. Full compose (Phase 13)
+- Multi-stage: `sdk:10.0-alpine` restores **from the lock files** (`--locked-mode`, BL-169) in a cached layer, then publishes; the runtime stage copies only the publish output. Build context = repository root; `.dockerignore` keeps tests, docs, `.env*`, private tooling and `bin/obj` out.
+- No `HEALTHCHECK` baked into the image (the orchestrator probes): compose uses `wget` (BusyBox, present in Alpine) against `/health/live` (simulator) and `/health/ready` (API).
+- Scan (Gate 13): `trivy image --scanners vuln --severity HIGH,CRITICAL` → **0 findings** on the three images (Alpine 3.24 packages and the .NET 10.0.12 shared frameworks) on 2026-09-21. Re-run: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL fulfillmenthub/api:local`.
+- Tags: `local` from compose; CI tags with the commit SHA (Phase 14); no `latest` outside development. The Admin image waits for Phase 17.
 
-Services: `postgres`, `localstack` (init script creates the queues + DLQ), `aspire-dashboard`, `simulator`, `api`, `worker`, `admin`. Profiles: `deps` (dependencies only, for `dotnet run`) and `full`.
+## 3. Full compose — Implemented (Phase 13, 2026-09-21)
+
+`docker compose --profile deps --profile app up --build -d` brings up **postgres**, **localstack**, **otel-lgtm** (profile
+`deps`) and, in order, **migrate** (one-off: `FulfillmentHub.Api.dll migrate`, exits 0), **seed** (one-off, Development
+data), **simulator**, **api** (`:5000`), **worker** (profile `app`). Always pass both profiles: the app services depend on
+the deps services. Configuration reaches the containers as environment variables (`Section__Key`) from a shared YAML
+anchor; **secrets come from `.env`** (`JWT_SIGNING_KEY`, `SEED_*_PASSWORD`, `POSTGRES_PASSWORD` are required; the provider
+keys default to the simulator's public dev-only values). The hosts run with the Development environment so the seed,
+Scalar and the 10-second metric export are on — a local full stack, not a production configuration.
+
+Gate 13 evidence (2026-09-21): `bash scripts/run-e2e.sh` against the containers → **3/3** E2E flows green in 37 s
+(`migrate` applied nothing on an already-migrated volume, `seed` wrote 0 rows, `api` healthy, `worker` provisioned the
+queues); images 168–209 MB; Trivy 0 HIGH/CRITICAL. Tear down with `docker compose --profile deps --profile app down`
+(`-v` also drops the volumes).
 
 ## 4. CI — Implemented (GitHub Actions, 2026-09-21, D-81); image pipeline Planned (Phase 14)
 

@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# FulfillmentHub Worker (outbox publisher, queue consumers, reconciliation jobs) — multi-stage, non-root, Alpine runtime (docs/DEPLOYMENT.md §2). Build context: repository root.
+#   docker build -f docker/Dockerfile.worker -t fulfillmenthub/worker:local .
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+WORKDIR /src
+
+# Restore first, from the lock files, so the NuGet layer is cached until a dependency really changes (BL-169).
+COPY global.json Directory.Build.props Directory.Packages.props FulfillmentHub.slnx .editorconfig ./
+COPY src/FulfillmentHub.Domain/FulfillmentHub.Domain.csproj src/FulfillmentHub.Domain/packages.lock.json src/FulfillmentHub.Domain/
+COPY src/FulfillmentHub.Application/FulfillmentHub.Application.csproj src/FulfillmentHub.Application/packages.lock.json src/FulfillmentHub.Application/
+COPY src/FulfillmentHub.Infrastructure/FulfillmentHub.Infrastructure.csproj src/FulfillmentHub.Infrastructure/packages.lock.json src/FulfillmentHub.Infrastructure/
+COPY src/FulfillmentHub.Worker/FulfillmentHub.Worker.csproj src/FulfillmentHub.Worker/packages.lock.json src/FulfillmentHub.Worker/
+RUN dotnet restore src/FulfillmentHub.Worker/FulfillmentHub.Worker.csproj --locked-mode
+
+COPY src/ src/
+RUN dotnet publish src/FulfillmentHub.Worker/FulfillmentHub.Worker.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine AS runtime
+# ICU for culture-aware formatting (the app does not run in invariant-globalization mode).
+RUN apk add --no-cache icu-libs && rm -rf /var/cache/apk/*
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    DOTNET_ENVIRONMENT=Production
+WORKDIR /app
+COPY --from=build /app .
+# Non-root (uid 1654 exists in the official images). No port: the Worker has no HTTP surface (liveness = heartbeat metric, D-86).
+USER app
+ENTRYPOINT ["dotnet", "FulfillmentHub.Worker.dll"]

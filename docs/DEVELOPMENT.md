@@ -42,6 +42,11 @@ dotnet run --project src/FulfillmentHub.Worker
 dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live — sends webhooks to http://localhost:5000/api/v1/webhooks/payments
 ```
 
+**Everything in containers instead** (Phase 13): add `JWT_SIGNING_KEY` and `SEED_*_PASSWORD` to `.env` (see `.env.example`), then
+`docker compose --profile deps --profile app up --build -d` — migrations and the seed run as one-off containers, the API answers on
+`http://localhost:5000` and the simulator on `:5100`. `bash scripts/run-e2e.sh` runs the black-box flows against whichever stack is up.
+Details and the image/scan evidence: DEPLOYMENT.md §2–§3.
+
 Observability: Grafana at http://localhost:3000 (dashboard *FulfillmentHub — Overview*, alert rules, Explore for Prometheus/Tempo/Loki) — see OBSERVABILITY.md §8 for the reproducible alert scenarios and the helper scripts (`scripts/place-orders.sh`, `scripts/alerts-status.sh`). The hosts export OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (it already is in `appsettings.Development.json`, together with a 10 s metric export interval). The lighter Aspire Dashboard is still available: `docker compose --profile aspire up -d` and point the endpoint at `http://localhost:4327`.
 
 SQS (Phase 9): in Development `Messaging:Sqs:Enabled=true` points at the compose LocalStack (`http://localhost:4566`, placeholder credentials `test`/`test` — not secrets). The Worker creates the `fh-domain-events`/`fh-webhooks-inbound` queues (+ `-dlq`) on startup; inspect them with `docker exec fulfillmenthub-localstack-1 awslocal sqs list-queues`. Without LocalStack, set `Messaging__Sqs__Enabled=false`: the outbox dispatches in-process and webhooks are processed inside the request (same behaviour, no queue).
@@ -57,6 +62,8 @@ dotnet ef migrations add <Name> --project src/FulfillmentHub.Infrastructure --st
 dotnet ef migrations script --idempotent -o artifacts/migrate.sql --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
 dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive   # also a CI gate
 bash scripts/alerts-status.sh                           # state of the local alert rules (Grafana)
+bash scripts/run-e2e.sh                                 # black-box E2E against the running stack (FH_E2E_API_URL, default :5000)
+docker compose --profile deps --profile app up --build -d   # full stack in containers (docker/Dockerfile.*)
 ```
 
 CI runs the same commands (`.github/workflows/ci.yml`) plus CodeQL (`codeql.yml`); see DEPLOYMENT.md §4.

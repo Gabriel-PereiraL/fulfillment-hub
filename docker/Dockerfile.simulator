@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# FulfillmentHub provider simulator — multi-stage, non-root, Alpine runtime (docs/DEPLOYMENT.md §2). Build context: repository root.
+#   docker build -f docker/Dockerfile.simulator -t fulfillmenthub/simulator:local .
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+WORKDIR /src
+
+# Restore first, from the lock files, so the NuGet layer is cached until a dependency really changes (BL-169).
+COPY global.json Directory.Build.props Directory.Packages.props FulfillmentHub.slnx .editorconfig ./
+
+COPY src/FulfillmentHub.ProviderSimulator/FulfillmentHub.ProviderSimulator.csproj src/FulfillmentHub.ProviderSimulator/packages.lock.json src/FulfillmentHub.ProviderSimulator/
+RUN dotnet restore src/FulfillmentHub.ProviderSimulator/FulfillmentHub.ProviderSimulator.csproj --locked-mode
+
+COPY src/ src/
+RUN dotnet publish src/FulfillmentHub.ProviderSimulator/FulfillmentHub.ProviderSimulator.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+# ICU for culture-aware formatting (the app does not run in invariant-globalization mode).
+RUN apk add --no-cache icu-libs && rm -rf /var/cache/apk/*
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_ENVIRONMENT=Production
+WORKDIR /app
+COPY --from=build /app .
+# Non-root (uid 1654 exists in the official images); port 8080 needs no privileges.
+USER app
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "FulfillmentHub.ProviderSimulator.dll"]

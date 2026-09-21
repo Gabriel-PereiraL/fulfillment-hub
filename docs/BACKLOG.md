@@ -147,7 +147,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-160 | `docker-compose.yml` (Postgres 17, Aspire Dashboard; LocalStack in Phase 9; simulator in Phase 6) | 1 | P0 | done |
 | BL-161 | `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` | 1 | P0 | done |
 | BL-162 | Local `git init`, clean first commit (no secrets or local files) | 1 | P0 | done |
-| BL-163 | Multi-stage non-root Dockerfiles + healthcheck (Api, Worker, Simulator, Admin) | 13 | P0 | todo |
+| BL-163 | Multi-stage non-root Dockerfiles + compose healthchecks (Api, Worker, Simulator; Admin with Phase 17) | 13 | P0 | done (2026-09-21: `docker/Dockerfile.*`, Alpine, uid 1654, 168–209 MB, Trivy 0 HIGH/CRITICAL; compose profile `app` with `migrate`/`seed` one-offs; E2E 3/3 against the containers) |
 | BL-164 | GitHub Actions: image build + Trivy + push to ECR (OIDC) — after Phase 13 | 14 | P0 | todo |
 | BL-166 | `ci.yml`: restore, build Release, format check, vulnerable-package gate, unit/architecture/integration tests (Testcontainers), test results artifact (D-81) | 14 | P0 | done (2026-09-21, first GitHub run green) |
 | BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | done (2026-09-21, first GitHub run green) |
