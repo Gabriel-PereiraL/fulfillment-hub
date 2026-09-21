@@ -164,8 +164,8 @@ dotnet test --solution FulfillmentHub.slnx   # 231 tests; Docker required for th
 | Metrics, traces, correlation id, health checks | implemented | [docs/OBSERVABILITY.md §2–§5](docs/OBSERVABILITY.md), [CorrelationIdMiddleware](src/FulfillmentHub.Api/Middleware/CorrelationIdMiddleware.cs), `/health/live`, `/health/ready` |
 | Alert rules evaluated on real metrics | implemented locally (Grafana provisioning) | [observability/grafana/provisioning/alerting](observability/grafana/provisioning/alerting/fulfillmenthub-alerts.yaml), [docs/OBSERVABILITY.md §6](docs/OBSERVABILITY.md) |
 | Alerts observed firing and resolving | executed 2026-09-21 (p95, worker heartbeat, DLQ, 5xx) | [docs/incidents/2026-09-21-slow-provider-drill.md](docs/incidents/2026-09-21-slow-provider-drill.md) |
-| CI (build, analyzers, format, vulnerable packages, tests) | executed on GitHub Actions (first run 2026-09-21; see DEPLOYMENT.md §4.1) | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
-| SAST with CodeQL | **executed** — run 35605030657 green, 63 rules, 1 finding triaged (false positive, justified), 0 open | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
+| CI (build, analyzers, format, vulnerable packages, tests) | **executed** — [run 35606335238](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335238) green, 231/231 tests on the runner | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| SAST with CodeQL | **executed** — [run 35606335294](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335294) green, 63 rules, 1 finding triaged (false positive, justified), 0 open | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
 
 ## Disclaimer
 
