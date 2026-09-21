@@ -9,6 +9,8 @@
     <ProjectReference Include="..\..\src\FulfillmentHub.Domain\FulfillmentHub.Domain.csproj" />
     <ProjectReference Include="..\..\src\FulfillmentHub.Infrastructure\FulfillmentHub.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\FulfillmentHub.Worker\FulfillmentHub.Worker.csproj" />
+    <!-- Contract tests compare the simulator's wire records with the provider clients' (BL-068). -->
+    <ProjectReference Include="..\..\src\FulfillmentHub.ProviderSimulator\FulfillmentHub.ProviderSimulator.csproj" />
   </ItemGroup>
 
 </Project>

@@ -37,11 +37,14 @@ resilience). There is no target number of tests or numeric coverage goal; there 
 - `Domain` does not reference `Application`/`Infrastructure`/framework packages; `Application` does not reference `Infrastructure`; hosts do not reference `Domain` directly for logic (they may for types).
 - Conventions: `sealed` use cases, `Handler` suffix, endpoints in `*Endpoints` classes, no public classes in `Infrastructure` outside the registration extension methods (to be reviewed).
 
-### E2E — `FulfillmentHub.E2ETests` (Phase 12)
-- Few flows: (1) order → paid → delivered; (2) order → payment declined → cancelled with stock released; (3) order → delivery cancelled by the provider → refund. With the simulator in a moderately chaotic mode.
+### E2E — `FulfillmentHub.E2ETests` — Implemented (Phase 12, 2026-09-21)
+- **Black box**: no project references; plain HTTP/JSON against a *running* stack (API + Worker + simulator + PostgreSQL + SQS), addressed by `FH_E2E_API_URL` and logged in as the seeded customer. Three flows: (1) order → paid → delivered; (2) order → payment declined (seed product `SANDBOX-DECLINE`, total ends in `.99`) → cancelled with stock released; (3) order → delivery returned by the provider (postal code `…002`) → cancelled `DeliveryFailed` after payment.
+- Without `FH_E2E_API_URL` the three tests are **skipped with an explicit reason** (visible in every run); `scripts/run-e2e.sh` sets the variables and checks `/health/ready` first. The same tests run against the containers in Phase 13.
+- Chaos is not part of the E2E flows: it lives in the integration suite (T22), where it is deterministic and observable.
 
-### Contract (Phase 12)
-- Client DTOs vs. simulator responses (and vs. the reference OpenAPI spec for the reproduced fields).
+### Contract — Implemented (Phase 12, 2026-09-21)
+- `ProviderContractTests` (unit): reflection over the client's wire records (`Provider*` in Infrastructure, internal → `InternalsVisibleTo`) and the simulator's (`ProviderSimulator`), field by field on the snake_case wire name: every field the consumer reads must exist on the producer with a compatible type, and a field the consumer requires (non-nullable, or `[Required]` on the simulator's request models) must not be nullable on the producer; extra producer fields are allowed (that is how real providers evolve). 11 pairs + a negative self-check that proves the comparer sees renamed, retyped, nullable and nested drift.
+- The comparison against the reference OpenAPI spec of the real provider remains documentation (INTEGRATIONS.md §2.1), not code: the spec is not vendored.
 
 ## 3. Matrix of mandatory scenarios
 
@@ -65,8 +68,11 @@ resilience). There is no target number of tests or numeric coverage goal; there 
 | T16 | Authorization | customer A `GET /orders/{B's id}` → 404 (existence not leaked); operator → 200 | integration | 4 ✔ `Customer_CannotSeeOrCancel_AnotherCustomersOrder`, `Operator_SeesEveryOrder_AndCancelsWithOperatorAction` |
 | T17 | Permanent payment failure | `card_declined` → `Payment Failed`, `Order Cancelled(PaymentFailed)`, stock released (`OrderCancelled` outbox event in Phase 8) | integration | 5 ✔ `DeclinedPayment_CancelsOrder_AndReleasesStock` (real webhook from the simulator, sandbox amount `…99`) |
 | T18 | Reconciliation | payment `Pending` for > X → the job queries the provider (`paid`) → state corrected | integration | 5 ✔ `SilentSettlement_IsPickedUpByReconciliation` (lost webhook, amount `…98`); `ProviderOutage_NeverFailsTheOrder_AndReconciliationRetriesTheCreation` (503 → order `Created`, reconciliation recreates at the provider); `PaymentCapturedAfterCustomerCancelled_…` (late capture does not resurrect a cancelled order) |
-| T19 | End-to-end trace | one order produces API→outbox→worker→provider spans with the same `trace_id` | integration (in-memory exporter) | 11 |
-| T20 | Convergence under chaos | `SIM_FAILURE_RATE=0.3`, `SIM_WEBHOOK_OUT_OF_ORDER=true` → 100% of orders reach a final state within ≤ N s | E2E | 12 |
+| T19 | End-to-end trace | one order produces API→outbox→worker→provider spans with the same `trace_id` | integration (`ActivityListener`) | 11 ✔ `TraceContinuityTests.PlaceOrder_OutboxHandler_AndProviderCall_ShareTheRequestTraceId` (`traceparent` sent to `POST /orders` = trace id of `PlaceOrder`, `Outbox OrderPlaced`, `CreatePayment`, `Provider CreatePayment` and the simulator's server span) |
+| T20 | Convergence under chaos | `Simulator:Chaos:FailureRate=0.3` → 100 % of orders reach a final state within the budget | integration | 12 ✔ superseded by T22 (kept for numbering) |
+| T21 | Provider contracts | client wire records ⊆ simulator wire records (names, types, nullability) in both directions of each call | unit (reflection) | 12 ✔ `ProviderContractTests` (7 responses read by the client, 4 requests read by the simulator, 1 negative self-check) |
+| T22 | Convergence under chaos | simulator answering 500 to 30 % of all calls (token, quote, payments, deliveries) → 8 orders all `Delivered`, exactly 1 `Paid` payment each, stock consumed exactly once; the test also asserts that 500s really happened | integration | 12 ✔ `ChaosConvergenceTests.OrdersConverge_ToDelivered_WhileTheProviderFails30PercentOfCalls` (~30 s; retries + circuit breaker + outbox retry + the Worker's sweeps driven by the test) |
+| T23 | End to end (black box) | running stack, public API only: (1) delivered, (2) declined payment → `Cancelled/PaymentFailed` + stock back, (3) returned delivery → `Cancelled/DeliveryFailed` | E2E | 12 ✔ `OrderFlowsTests` — 3/3 green on 2026-09-21 against `dotnet run` hosts + compose deps (38 s); skipped with reason when `FH_E2E_API_URL` is unset |
 
 ## 4. Test quality rules
 
@@ -75,15 +81,15 @@ resilience). There is no target number of tests or numeric coverage goal; there 
 - Forbidden: tests that only verify a method was called; tests that copy the implementation; `Thread.Sleep`; ordering dependencies between tests; shared mutable data; `DateTime.Now`.
 - Builders/`ObjectMother` for data (`AnOrder().WithItems(...).Build()`), no giant fixtures.
 - Integration: clean database per test (Respawn) or rolled-back transaction; containers shared per collection (`ICollectionFixture`).
-- Integration tests run in the default `dotnet test` (Docker required); E2E and load tests sit behind a category/trait.
+- Integration tests run in the default `dotnet test` (Docker required); E2E tests self-skip (with the reason) unless `FH_E2E_API_URL` points at a running stack; load tests (Phase 18) will sit behind a trait.
 - A failing test in CI is blocking. Flaky = bug: fix or remove, never an automatic `retry`.
 
 ## 5. How to run (from Phase 1 on)
 
 ```bash
-dotnet test                                   # unit + architecture + integration (Docker required)
-dotnet test --filter "Category!=E2E"          # without E2E
-dotnet test tests/FulfillmentHub.E2ETests     # after docker compose up
+dotnet test --solution FulfillmentHub.slnx    # unit + architecture + integration (Docker required); E2E skipped unless configured
+bash scripts/run-e2e.sh                       # E2E against the running stack (reads the seed password from user-secrets)
+FH_E2E_API_URL=http://localhost:5000 FH_E2E_CUSTOMER_PASSWORD=... dotnet test --project tests/FulfillmentHub.E2ETests
 ```
 
 ## 6. Evidence for the portfolio

@@ -61,6 +61,8 @@ public sealed partial class DevelopmentSeeder(
         ("TSHIRT-FH-M", "FulfillmentHub t-shirt (M)", 59m, 40),
         ("STICKER-PACK", "Sticker pack", 12m, 500),
         ("LAST-UNIT", "Single-unit item (concurrency tests)", 199m, 1),
+        // Total ends in .99 (delivery fees are whole reais) → the payment simulator declines it (E2E "failed payment" flow).
+        ("SANDBOX-DECLINE", "Sandbox: payment declined (total ends in .99)", 10.99m, 500),
     ];
 
     private async Task<User> EnsureUserAsync(string email, string password, Role[] roles, DateTimeOffset now, CancellationToken cancellationToken)

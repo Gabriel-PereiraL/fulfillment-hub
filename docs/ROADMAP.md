@@ -21,7 +21,7 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | **done (2026-09-18)** | Gate 9 |
 | 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **done (2026-09-21)** | Gate 10 |
 | 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **in-progress** (alerting subset in the hardening track) | Gate 11 |
-| 12 | Testing hardening (E2E, contract tests, chaos via simulator) | todo | Gate 12 |
+| 12 | Testing hardening (E2E, contract tests, chaos via simulator) | **done (2026-09-21)** | Gate 12 |
 | 13 | Docker images + full compose | todo | Gate 13 |
 | 14 | CI (GitHub Actions) | **in-progress** (CI + SAST subset in the hardening track) | Gate 14 |
 | 15 | AWS IaC (Terraform) — **requires an AWS account and a cost decision** | todo | Gate 15 |
@@ -157,10 +157,11 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 **Tasks**: our own metrics (OBSERVABILITY.md); spans in worker/outbox/consumers with context propagation (trace parent stored in the outbox and in the SQS message); local dashboards (Aspire Dashboard + saved queries); planned alerts (thresholds); "customer reports slowness" runbook; a test verifying that one order produces a single end-to-end `trace_id`.
 **Gate 11**: runbook actually executed locally with a slow simulator and evidence (screenshots/record in docs).
 
-## Phase 12 — Testing hardening
+## Phase 12 — Testing hardening — `done` (2026-09-21)
 **Goal**: E2E of the main flows, simulator contract tests, chaos.
 **Tasks**: E2E with compose (order→delivery, order→failed payment, order→cancelled delivery); contract tests (simulator schemas vs. client DTOs); a run with `SIM_FAILURE_RATE=0.3` asserting convergence; optional mutation coverage (Stryker) on Domain; clean-up of weak tests.
 **Gate 12**: E2E green; TEST_STRATEGY.md with the "scenario → test" matrix.
+**Result**: black-box E2E project (3 flows, 3/3 green against the running stack, self-skipping otherwise), provider contract tests (11 pairs + negative self-check), chaos convergence test (30 % provider 500s, 8 orders all delivered, faults proven), test-side races of BL-152 fixed; Stryker left as optional (P3). Matrix T19–T23 in TEST_STRATEGY.md §3. Suite: 245 tests + 3 E2E.
 
 ## Phase 13 — Docker images + full compose
 **Goal**: multi-stage Dockerfiles (Api, Worker, Simulator, Admin), non-root user, healthcheck; compose brings everything up.

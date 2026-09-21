@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Wire-contract records are internal; the unit tests compare them with the simulator's (docs/TEST_STRATEGY.md, BL-068). -->
+    <InternalsVisibleTo Include="FulfillmentHub.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\FulfillmentHub.Application\FulfillmentHub.Application.csproj" />
     <ProjectReference Include="..\FulfillmentHub.Domain\FulfillmentHub.Domain.csproj" />
   </ItemGroup>

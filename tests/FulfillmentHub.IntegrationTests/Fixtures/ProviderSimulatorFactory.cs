@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace FulfillmentHub.IntegrationTests.Fixtures;
 
@@ -20,6 +21,9 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
     public const string DeliveryClientSecret = "integration-tests-delivery-secret";
     public const string DeliveryCustomerId = "cus_sim_tests";
     public const string DeliveryWebhookSigningKey = "integration-tests-delivery-signing-key";
+
+    /// <summary>Failure injection switch shared by every simulated endpoint (BL-150).</summary>
+    public TestChaos Chaos { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -41,7 +45,10 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
                 ["Simulator:Delivery:StepMs"] = "500",
             }));
         builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IOptionsMonitor<ChaosOptions>>(Chaos);
             services.AddHttpClient(WebhookDispatcher.HttpClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => new TracePropagationHandler { InnerHandler = apiServer().CreateHandler() }));
+                .ConfigurePrimaryHttpMessageHandler(() => new TracePropagationHandler { InnerHandler = apiServer().CreateHandler() });
+        });
     }
 }

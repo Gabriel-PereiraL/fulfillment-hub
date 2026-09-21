@@ -68,7 +68,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-067 | Periodic reconciliation of payments and deliveries (`GET` at the provider) | 5/8 | P1 | done (payments Phase 5, deliveries Phase 7: `DeliveryReconciliationService`) |
 | BL-244 | Automatic refund when the provider captures after the customer cancelled (`paid_after_cancellation`) — previously log 5002 + metric only | 8 | P1 | done (`RefundPaymentHandler` via `OrderCancelled`/`PaymentPaid`) |
 | BL-245 | Simulator: `WebhookFailFirstN` (forces webhook delivery retry) and an out-of-order webhook scenario | 7 | P2 | todo |
-| BL-068 | Contract tests: simulator schemas vs. client DTOs | 12 | P1 | todo |
+| BL-068 | Contract tests: simulator schemas vs. client DTOs | 12 | P1 | done (2026-09-21: `ProviderContractTests`, reflection over both wire-record sets, T21) |
 | BL-069 | Second delivery provider (`AlternativeProvider`) to demonstrate substitution | 18+ | P3 | todo |
 | BL-070 | Cache/renewal of the simulator's OAuth-like token (401 → renew once) | 6 | P1 | done (`DeliveryAccessTokenProvider` + `DeliveryBearerTokenHandler`, D-54) |
 
@@ -134,10 +134,10 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-145 | Retry matrix with a fake `HttpMessageHandler`; circuit breaker opens/closes | 5/6 | P0 | done (retry ✔ T9, opens ✔ T10 Phase 5; half-open/closes ✔ T10 Phase 6) |
 | BL-146 | Outbox: zero loss, retry, `Failed` | 8 | P0 | done |
 | BL-147 | SQS: DLQ after N, idempotent consumer | 9 | P0 | done (T14/T15 in `SqsMessagingTests`) |
-| BL-148 | E2E with compose: 3 flows | 12 | P0 | todo |
+| BL-148 | E2E, 3 flows (black box over HTTP against the running stack; the compose-with-images variant is Gate 13) | 12 | P0 | done (2026-09-21: `FulfillmentHub.E2ETests` 3/3 against `dotnet run` hosts, T23; `scripts/run-e2e.sh`) |
 | BL-149 | Authorization tests: 401/403 per role (Phase 3) and cross-resource access (Phase 4) | 3/4 | P0 | done |
-| BL-150 | Convergence with `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
-| BL-151 | Stryker (mutation) on Domain | 12 | P3 | todo |
+| BL-150 | Convergence with `Simulator:Chaos:FailureRate=0.3` | 12 | P1 | done (2026-09-21: `ChaosConvergenceTests`, T22, faults proven by the simulator's own 500 count) |
+| BL-151 | Stryker (mutation) on Domain | 12 | P3 | todo (optional in the ROADMAP; not needed for Gate 12) |
 | BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying. **2026-09-21**: first CI run hit a third shape — `WaitForOrderStatusAsync` compared the status for equality and missed the transient `Paid` (order already `Delivered`); the poller now accepts any later happy-path status. `DriveToInDeliveryAsync` now pauses the in-process publisher while it writes the order (the `xmin` race) | 12 | P1 | done (2026-09-21 — reopen with the exact test and log if a new shape appears) |
 
 ## DevOps
@@ -153,7 +153,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | done (2026-09-21, first GitHub run green) |
 | BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | done (2026-09-21, first GitHub run green) |
 | BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | done (2026-09-21: 9 `packages.lock.json` committed; `ci.yml`/`codeql.yml` restore in locked mode — first CI run pending push) |
-| BL-165 | `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |
+| BL-165 | `scripts/` (run-e2e, place-orders, alerts-status; migrate/seed stay the two documented `dotnet` commands) | 12 | P1 | done (2026-09-21) |
 
 ## AWS
 

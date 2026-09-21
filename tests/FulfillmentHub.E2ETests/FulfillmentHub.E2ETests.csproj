@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Black-box end-to-end tests (docs/TEST_STRATEGY.md T23, BL-148): plain HTTP against a RUNNING stack (hosts started
+    with `dotnet run` or the containers of Phase 13). No project references on purpose — only the public API contract.
+    Skipped, with the reason shown, when FH_E2E_API_URL is not set. Runner: scripts/run-e2e.sh.
+  -->
+
+
+</Project>
