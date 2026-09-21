@@ -183,11 +183,11 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 | Layer | Tool | Where | Status |
 |---|---|---|---|
 | Compiler analyzers (not SAST) | .NET analyzers `latest-recommended` incl. `CA3xxx`/`CA5xxx`, EF analyzers, `TreatWarningsAsErrors` | every build, `ci.yml` | **Implemented** |
-| **SAST** | **GitHub CodeQL** (C#, `security-extended` suite) | `.github/workflows/codeql.yml` — push to `main`, pull requests, weekly schedule; results in *Security → Code scanning* | **Implemented and executed** — first run 2026-09-21 ([run 35605030657](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030657), 2 min 58 s, 63 rules, **1 finding**, triaged — see §6.4) |
+| **SAST** | **GitHub CodeQL** (C#, `security-extended` suite) | `.github/workflows/codeql.yml` — push to `main`, pull requests, weekly schedule; results in *Security → Code scanning* | **Implemented and executed** — first run 2026-09-21 ([run 35605030657](https://github.com/Gabriel-PereiraL/fulfillment-hub/actions/runs/35605030657), 2 min 58 s, 63 rules, **1 finding**, triaged — see §6.4) |
 | Vulnerable packages | `dotnet list package --vulnerable --include-transitive` (fails the job on any hit) | `ci.yml` | **Implemented and executed** (0 advisories on 2026-09-21) |
 | Dependency review | `actions/dependency-review-action` (fails PRs that add known-vulnerable packages) | `ci.yml`, pull requests only | **Implemented** — not exercised yet: the job only runs on pull requests and none has been opened (it shows as `skipped` on push runs) |
 | Secret scanning | gitleaks (full history) | `ci.yml` | **Implemented and executed** (0 leaks on 2026-09-21) — plus GitHub's native secret scanning/push protection (repository setting, recommended) |
-| Image scanning | Trivy `image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1` on the three images built on the runner | `ci.yml`, job `images` (after the size gate, before the E2E) | **Implemented and executed** (0 HIGH/CRITICAL on 2026-09-21, [run 35623513605](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35623513605)) |
+| Image scanning | Trivy `image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1` on the three images built on the runner | `ci.yml`, job `images` (after the size gate, before the E2E) | **Implemented and executed** (0 HIGH/CRITICAL on 2026-09-21, [run 35623513605](https://github.com/Gabriel-PereiraL/fulfillment-hub/actions/runs/35623513605)) |
 
 ### 6.1 How CodeQL works here
 1. `codeql.yml` checks out the repository, installs .NET 10, initialises CodeQL for `csharp` with the `security-extended`
