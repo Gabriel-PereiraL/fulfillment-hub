@@ -12,7 +12,7 @@ signed webhooks, security and observability — each of them covered by tests th
 Phase 14 (a cross-phase hardening track). An order travels `Created → AwaitingPayment → Paid → DeliveryRequested →
 InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues (LocalStack) and
 the providers answering through signed webhooks. Alerts fire from real metrics on the local Grafana stack, and the
-GitHub Actions workflows (build/test, CodeQL) are committed — their first run needs the next push.
+GitHub Actions workflows (build/test, CodeQL) ran green on the first push.
 Project status in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.
@@ -62,8 +62,9 @@ Periodic reconciliation covers lost webhooks; the DLQ and the admin endpoints co
   a provisioned dashboard and **five alert rules** (5xx rate, p95 latency, worker heartbeat, outbox backlog, DLQ) —
   four of them provoked and observed firing end to end ([docs/incidents](docs/incidents/2026-09-21-slow-provider-drill.md)).
 - **CI / SAST**: `ci.yml` (build with analyzers, format, vulnerable-package gate, full test suite with Testcontainers,
-  dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) in `.github/workflows/` — written and
-  linted; first execution pending the next push (see [docs/DEPLOYMENT.md §4](docs/DEPLOYMENT.md)).
+  dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) in `.github/workflows/` — executed on
+  2026-09-21: CodeQL green (63 rules, 1 finding triaged as false positive), CI green after one timing fix in a test
+  poller (see [docs/DEPLOYMENT.md §4.1](docs/DEPLOYMENT.md)).
 - **Tests**: 231 (125 unit, 6 architecture, 100 integration) — the integration tests host the API, the Worker and the
   simulator in-process against real PostgreSQL and LocalStack containers (Testcontainers), with webhooks travelling
   between the hosts.
@@ -163,8 +164,8 @@ dotnet test --solution FulfillmentHub.slnx   # 231 tests; Docker required for th
 | Metrics, traces, correlation id, health checks | implemented | [docs/OBSERVABILITY.md §2–§5](docs/OBSERVABILITY.md), [CorrelationIdMiddleware](src/FulfillmentHub.Api/Middleware/CorrelationIdMiddleware.cs), `/health/live`, `/health/ready` |
 | Alert rules evaluated on real metrics | implemented locally (Grafana provisioning) | [observability/grafana/provisioning/alerting](observability/grafana/provisioning/alerting/fulfillmenthub-alerts.yaml), [docs/OBSERVABILITY.md §6](docs/OBSERVABILITY.md) |
 | Alerts observed firing and resolving | executed 2026-09-21 (p95, worker heartbeat, DLQ, 5xx) | [docs/incidents/2026-09-21-slow-provider-drill.md](docs/incidents/2026-09-21-slow-provider-drill.md) |
-| CI (build, analyzers, format, vulnerable packages, tests) | workflow committed and linted; **first GitHub run pending** | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
-| SAST with CodeQL | workflow committed and linted; **first GitHub run pending** | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
+| CI (build, analyzers, format, vulnerable packages, tests) | executed on GitHub Actions (first run 2026-09-21; see DEPLOYMENT.md §4.1) | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| SAST with CodeQL | **executed** — run 35605030657 green, 63 rules, 1 finding triaged (false positive, justified), 0 open | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
 
 ## Disclaimer
 

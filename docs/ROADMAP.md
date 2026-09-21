@@ -45,7 +45,7 @@ the track does not cover.
 | 2 | 11 — Observability | BL-128 (`grafana/otel-lgtm` backend + provisioning), BL-129 (four alert rules), BL-130 (fault scenarios), BL-125 (one runbook executed with evidence) | BL-122 use-case spans, BL-123 remaining metrics (`fh.idempotency.hits`, `fh.order.time_to_final`), BL-127 trace-id test, BL-246 |
 | 3 | 14 — CI | BL-166 (`ci.yml`), BL-167 (`codeql.yml` — SAST), BL-168 (dependency review, gitleaks), BL-109 (vulnerable-package gate) | BL-164 image build/Trivy/ECR (needs Phase 13 images) |
 
-**Track status (2026-09-21)**: order 1 (Phase 10) **done**; order 2 (Phase 11 alerting subset) **done** — five rules provisioned, four provoked and observed firing/resolving (`docs/incidents/2026-09-21-slow-provider-drill.md`); order 3 (Phase 14 CI/SAST subset) **workflows committed and linted; first GitHub execution pending the owner's push** (DEPLOYMENT.md §4.1). Phases 11 and 14 remain `in-progress` for their remaining items.
+**Track status (2026-09-21)**: order 1 (Phase 10) **done**; order 2 (Phase 11 alerting subset) **done** — five rules provisioned, four provoked and observed firing/resolving (`docs/incidents/2026-09-21-slow-provider-drill.md`); order 3 (Phase 14 CI/SAST subset) **done** — first GitHub runs on 2026-09-21: CodeQL green (1 finding triaged), CI green after a test-poller timing fix (DEPLOYMENT.md §4.1). Phases 11 and 14 remain `in-progress` for their remaining items.
 
 **Invariants of the track**: no AWS resources; no new business rules; no fault injection inside the API (D-80); no
 push without the owner's authorization (the CodeQL run on GitHub is the only step that needs it); the existing

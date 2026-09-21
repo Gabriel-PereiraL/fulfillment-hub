@@ -138,7 +138,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-149 | Authorization tests: 401/403 per role (Phase 3) and cross-resource access (Phase 4) | 3/4 | P0 | done |
 | BL-150 | Convergence with `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
 | BL-151 | Stryker (mutation) on Domain | 12 | P3 | todo |
-| BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying | 12 | P1 | todo |
+| BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying. **2026-09-21**: first CI run hit a third shape — `WaitForOrderStatusAsync` compared the status for equality and missed the transient `Paid` (order already `Delivered`); the poller now accepts any later happy-path status | 12 | P1 | doing (poller fixed; helper races still open) |
 
 ## DevOps
 
@@ -149,9 +149,9 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-162 | Local `git init`, clean first commit (no secrets or local files) | 1 | P0 | done |
 | BL-163 | Multi-stage non-root Dockerfiles + healthcheck (Api, Worker, Simulator, Admin) | 13 | P0 | todo |
 | BL-164 | GitHub Actions: image build + Trivy + push to ECR (OIDC) — after Phase 13 | 14 | P0 | todo |
-| BL-166 | `ci.yml`: restore, build Release, format check, vulnerable-package gate, unit/architecture/integration tests (Testcontainers), test results artifact (D-81) | 14 | P0 | done (2026-09-21, workflow committed + linted; first GitHub run pending push) |
-| BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | done (2026-09-21, workflow committed + linted; first GitHub run pending push) |
-| BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | done (2026-09-21; first GitHub run pending push) |
+| BL-166 | `ci.yml`: restore, build Release, format check, vulnerable-package gate, unit/architecture/integration tests (Testcontainers), test results artifact (D-81) | 14 | P0 | done (2026-09-21, first GitHub run green) |
+| BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | done (2026-09-21, first GitHub run green) |
+| BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | done (2026-09-21, first GitHub run green) |
 | BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | todo |
 | BL-165 | `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |
 

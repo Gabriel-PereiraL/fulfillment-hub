@@ -34,9 +34,15 @@ stale runs; **no repository secrets** are required (the tests generate their own
 Local equivalents: the same commands in DEVELOPMENT.md §3; `actionlint` was run against both files
 (`docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint`, 0 errors).
 
-### 4.1 Evidence procedure (needs the repository owner to push)
-The workflows were written and linted locally; **they have not run on GitHub yet** — running them requires a push,
-which is never done without the owner's explicit authorization (repository rule). After the push:
+### 4.1 First execution (2026-09-21) and evidence procedure
+Pushed with the owner's authorization on 2026-09-21 (`847bddf..85b7653`). Results of the first runs:
+
+| Workflow | Run | Result |
+|---|---|---|
+| CodeQL (SAST) | [35605030657](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030657) | **green** in 2 min 58 s; 63 C# rules; 1 finding (`cs/log-forging`, medium) triaged as a false positive with justification — SECURITY.md §6.4; 0 open alerts |
+| CI | [35605030618](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030618) | build, format, vulnerable-package gate and gitleaks **green**; tests **230/231** — `PaymentFlowTests.PlaceOrder_InitiatesPayment_AndWebhookMarksOrderPaid` timed out waiting for `Paid` because the order was already `Delivered` (fast runner; the poller compared statuses for equality). Fixed in the test support (the poller now accepts a later happy-path status); the rerun on the fix commit is the reference run |
+
+Procedure for every later run:
 1. *Actions* tab → workflow *CI* → the run for the pushed commit must be green; download the `test-results` artifact.
 2. *Actions* tab → *CodeQL (SAST)* → green run; *Security → Code scanning* lists the analysis (tool "CodeQL",
    language C#) and any alerts. Record the run URL and the alert count in `docs/SECURITY.md` §6 and in the README.

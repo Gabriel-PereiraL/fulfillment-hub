@@ -24,16 +24,24 @@ internal static class PaymentsTestSupport
 
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>Polls the public API until the order reaches <paramref name="status"/>; fails after a generous timeout.</summary>
+    /// <summary>
+    /// Polls the public API until the order reaches <paramref name="status"/> — or has already moved past it along the
+    /// happy path (`Created → … → Delivered`): with webhooks flowing in-process a transient status such as `Paid` can be
+    /// left behind between two polls on a fast machine (seen once on the CI runner). `Cancelled` is never "past" anything.
+    /// Fails after a generous timeout.
+    /// </summary>
     public static async Task<OrderDto> WaitForOrderStatusAsync(HttpClient client, Guid orderId, string status)
     {
         var deadline = DateTimeOffset.UtcNow + PollTimeout;
+        var target = Enum.Parse<OrderStatus>(status);
         OrderDto? last = null;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
             last = await client.GetFromJsonAsync<OrderDto>($"/api/v1/orders/{orderId}", TestContext.Current.CancellationToken);
-            if (last?.Status == status)
+            if (last is not null
+                && Enum.TryParse<OrderStatus>(last.Status, out var current)
+                && (current == target || (target != OrderStatus.Cancelled && current != OrderStatus.Cancelled && current > target)))
             {
                 return last;
             }

@@ -63,8 +63,8 @@ Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed).
 | T7 | Flood: login / webhooks / order creation | D | fixed window per IP (login 5/min, webhooks 1200/min), sliding window per user for `POST /orders` (60/min), 64 KB webhook body, 256 KB Kestrel body limit, provider timeouts | **Implemented** | D-69, D-83, D-84; `AuthEndpointsTests.Login_IsRateLimitedPerClient`, `PlaceOrderRateLimitTests`, `WebhookReceiver` (413); Kestrel limit: smoke evidence §1.7 |
 | T8 | SSRF | T | the system never calls a user-supplied URL; provider base URLs are validated `Options` (`ValidateOnStart`); the simulator's webhook target is simulator configuration | **Implemented (by design)** | `PaymentProviderOptions`, `DeliveryProviderOptions`; no endpoint accepts a URL (OpenAPI document) |
 | T9 | PII or secrets in logs | I | `LoggerMessage` catalog uses ids and enum reasons only; webhook body/signature/key never logged; EF sensitive data logging off; guard test scans every `[LoggerMessage]` for e-mail/phone/password/token/key/body placeholders | **Implemented** | `LogMessagePrivacyTests.LoggerMessages_DoNotCarryPersonalDataOrSecrets` (architecture tests); D-85 |
-| T10 | Secrets in the repository / CI | I | empty values in `appsettings*`, user-secrets locally, `.env` ignored, `ValidateOnStart` refuses empty keys; gitleaks in CI; history audited on 2026-09-18 (nothing real) | **Implemented** (local + CI job committed) · first CI run pending push | `.gitignore`, `JwtOptions`/provider options; `.github/workflows/ci.yml` job `secrets` |
-| T11 | Vulnerable dependency | supply chain | CPM with pinned versions; `dotnet list package --vulnerable --include-transitive` as a CI gate; GitHub dependency review on PRs; CodeQL | **Implemented** (gate committed) · Trivy for images: **Planned** (Phase 13/14) | `Directory.Packages.props`; `ci.yml` step `Vulnerable packages`; `codeql.yml` |
+| T10 | Secrets in the repository / CI | I | empty values in `appsettings*`, user-secrets locally, `.env` ignored, `ValidateOnStart` refuses empty keys; gitleaks in CI; history audited on 2026-09-18 (nothing real) | **Implemented** (gitleaks ran green on 2026-09-21) | `.gitignore`, `JwtOptions`/provider options; `.github/workflows/ci.yml` job `secrets` |
+| T11 | Vulnerable dependency | supply chain | CPM with pinned versions; `dotnet list package --vulnerable --include-transitive` as a CI gate; GitHub dependency review on PRs; CodeQL | **Implemented** (gate ran green on 2026-09-21) · Trivy for images: **Planned** (Phase 13/14) | `Directory.Packages.props`; `ci.yml` step `Vulnerable packages`; `codeql.yml` |
 | T12 | Response-level attacks (MIME sniffing, clickjacking of an HTML error page, referrer leaks, cached tokens) | I/T | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, CSP `default-src 'none'`, `Cache-Control: no-store` on `/api`, HSTS outside Development | **Implemented** · HSTS effective only once TLS/ForwardedHeaders exist (BL-113) | `SecurityHeadersMiddleware`; `SecurityHeadersTests` (4 tests) |
 | T13 | Cross-origin browser abuse (CSRF-like calls from another origin) | S | **no CORS policy**: browsers enforce same-origin by default; bearer tokens are not sent automatically like cookies | **Implemented (by absence — D-82)** | `Program.cs` has no `AddCors`/`UseCors`; revisit in Phase 17 if a browser client on another origin appears |
 | T14 | Destructive automatic migrations | T/A | never `Database.Migrate()` at startup; migrations applied by an explicit command / one-off task | **Implemented** (local) · production procedure **Planned** (Phase 16) | `Program.cs` (no `Migrate()`); `DEVELOPMENT.md` §2 |
@@ -165,7 +165,7 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 | A03 | Injection | **Implemented** | EF Core parameterised; only `FromSqlInterpolated`; no `*Raw(`; native request validation; CodeQL `security-extended` includes injection queries (§6) |
 | A04 | Insecure Design | **Implemented** | threat model (§1) with trust boundaries and residual risks; idempotency per user (ADR-010); limits (1–50 items, 1–99 units, 64 KB / 256 KB bodies, rate limits); reconciliation jobs; outbox at-least-once with idempotent consumers |
 | A05 | Security Misconfiguration | **Partial** | security headers ✔ (`SecurityHeadersTests`); no stack traces outside Development (ProblemDetails) ✔; OpenAPI/Scalar only in Development ✔; CORS not enabled by decision ✔; `AllowedHosts` — **gap**: non-root containers (Phase 13); `ForwardedHeaders` (Phase 16) |
-| A06 | Vulnerable and Outdated Components | **Implemented** (CI committed, first run pending push) | CPM pinned versions; `dotnet list package --vulnerable --include-transitive` gate in `ci.yml`; dependency review on PRs; .NET 10 LTS — image scanning **Planned** (Phase 13) |
+| A06 | Vulnerable and Outdated Components | **Implemented** (CI executed 2026-09-21) | CPM pinned versions; `dotnet list package --vulnerable --include-transitive` gate in `ci.yml`; dependency review on PRs; .NET 10 LTS — image scanning **Planned** (Phase 13) |
 | A07 | Identification and Authentication Failures | **Implemented** · R1/R2 accepted | 5/min per IP; identical 401 + decoy hash; 15-min expiry; `AuthEndpointsTests` |
 | A08 | Software and Data Integrity Failures | **Partial** | webhooks signed + verified with the provider ✔; outbox in the same transaction ✔ (`OutboxTests`); CI with least-privilege `permissions:` and pinned major versions ✔ — **gap**: NuGet lock file / `--locked-mode` (BL-169, P2), signed images (Phase 13) |
 | A09 | Security Logging and Monitoring Failures | **Partial** | structured auth events 3000/3001 ✔; rejected webhooks 5200 + `fh.webhooks.rejected{reason}` ✔; PII guard test ✔; **alerts** on 5xx / latency / worker heartbeat / outbox backlog ✔ (OBSERVABILITY.md §6) — **gap**: alert on login failures and rejected webhooks documented but not provisioned (D-79) |
@@ -182,10 +182,10 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 | Layer | Tool | Where | Status |
 |---|---|---|---|
 | Compiler analyzers (not SAST) | .NET analyzers `latest-recommended` incl. `CA3xxx`/`CA5xxx`, EF analyzers, `TreatWarningsAsErrors` | every build, `ci.yml` | **Implemented** |
-| **SAST** | **GitHub CodeQL** (C#, `security-extended` suite) | `.github/workflows/codeql.yml` — push to `main`, pull requests, weekly schedule; results in *Security → Code scanning* | **Implemented** — workflow committed; **first run happens when the owner pushes** (see DEPLOYMENT.md §4 for the evidence procedure) |
-| Vulnerable packages | `dotnet list package --vulnerable --include-transitive` (fails the job on any hit) | `ci.yml` | **Implemented** |
+| **SAST** | **GitHub CodeQL** (C#, `security-extended` suite) | `.github/workflows/codeql.yml` — push to `main`, pull requests, weekly schedule; results in *Security → Code scanning* | **Implemented and executed** — first run 2026-09-21 ([run 35605030657](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030657), 2 min 58 s, 63 rules, **1 finding**, triaged — see §6.4) |
+| Vulnerable packages | `dotnet list package --vulnerable --include-transitive` (fails the job on any hit) | `ci.yml` | **Implemented and executed** (0 advisories on 2026-09-21) |
 | Dependency review | `actions/dependency-review-action` (fails PRs that add known-vulnerable packages) | `ci.yml`, pull requests only | **Implemented** |
-| Secret scanning | gitleaks (full history) | `ci.yml` | **Implemented** — plus GitHub's native secret scanning/push protection (repository setting, recommended) |
+| Secret scanning | gitleaks (full history) | `ci.yml` | **Implemented and executed** (0 leaks on 2026-09-21) — plus GitHub's native secret scanning/push protection (repository setting, recommended) |
 | Image scanning | Trivy | Phase 13/14 | **Planned** |
 
 ### 6.1 How CodeQL works here
@@ -209,6 +209,13 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 - `security-extended` raises more low-confidence findings than the default suite; the triage rule above applies.
 - Runs only on GitHub-hosted runners (no local execution documented; the CodeQL CLI can reproduce it, not required).
 - Test projects are analysed too; findings there are triaged with the same rules.
+
+### 6.4 Analysis results (first run, 2026-09-21)
+| # | Query | Location | Triage |
+|---|---|---|---|
+| 1 | `cs/log-forging` (medium) — "log entries created from user input" | `CorrelationIdMiddleware.cs:23` — the `X-Correlation-Id` value goes into a logging scope | **False positive, dismissed with justification** (alert #1): `IsAcceptable` whitelists the value to 1–64 ASCII letters/digits/`-`/`_` before it reaches the scope and replaces anything else with a server-generated GUID v7, so no CR/LF or control character can reach a log line. CodeQL does not recognise the custom whitelist as a sanitizer. Kept as is: the id must be logged verbatim to correlate a customer's ticket. |
+
+Open alerts after triage: **0**. Every future finding follows §6.2.
 
 ## 7. Pre-publication checklist (before any push/publication)
 See `DEPLOYMENT.md`, section "Leak-prevention checklist".

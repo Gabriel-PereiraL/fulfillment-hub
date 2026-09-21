@@ -11,8 +11,8 @@ Last update: 2026-09-21.
   security headers, per-user order rate limiting and a body limit, and five alert rules evaluated on the application's
   real metrics fire on the local Grafana stack (four of them provoked and observed firing and resolving on 2026-09-21).
 - Phases still open: **11 — Observability hardening** (use-case spans, remaining metrics, trace-id test) and
-  **14 — CI** (image build/scan; the build/test and CodeQL workflows are committed but have **not run on GitHub yet** —
-  they need the next push).
+  **14 — CI** (image build/scan; the build/test and CodeQL workflows ran on GitHub on 2026-09-21 — CodeQL green with
+  1 finding triaged, CI green after a timing fix in a test poller).
 - Tests: **231** green (125 unit, 6 architecture, 100 integration; the integration tests run against real PostgreSQL and
   LocalStack containers via Testcontainers).
 - Build: 0 warnings (`TreatWarningsAsErrors`); `dotnet format` clean; 0 vulnerable packages
@@ -34,7 +34,7 @@ Last update: 2026-09-21.
 | SQS messaging | `fh-domain-events` and `fh-webhooks-inbound` queues with dead-letter queues; consumers with long polling, bounded concurrency, visibility backoff and deduplication persisted in the same transaction as the effect; in-process mode when the broker is disabled (ADR-005) |
 | Observability | Structured logging with `LoggerMessage` (no PII/secrets), OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, AWS SDK, runtime), custom spans and `fh.*` metrics, trace propagation through the outbox and the queue, correlation id (ADR-009) |
 | Local observability backend + alerting (Phase 11 subset) | `grafana/otel-lgtm` in the compose (Prometheus, Tempo, Loki, Grafana) with a provisioned dashboard and five alert rules (`ApiHigh5xxRate`, `ApiHighLatencyP95`, `WorkerHeartbeatMissing`, `OutboxBacklog`, `QueueDlqNotEmpty`); reproducible fault scenarios with existing knobs; drills executed with evidence in [incidents/](incidents/) (ADR-009 addendum, D-78/D-79/D-80) |
-| CI / SAST (Phase 14 subset) | `.github/workflows/ci.yml` (restore, build with analyzers, format, vulnerable-package gate, full test suite with Testcontainers, dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) — committed and linted; **first execution pending the next push** ([DEPLOYMENT.md §4](DEPLOYMENT.md)) |
+| CI / SAST (Phase 14 subset) | `.github/workflows/ci.yml` (restore, build with analyzers, format, vulnerable-package gate, full test suite with Testcontainers, dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) — executed on GitHub Actions on 2026-09-21 (CodeQL: 63 rules, 1 finding triaged as false positive, 0 open; CI green after the test-poller fix) ([DEPLOYMENT.md §4.1](DEPLOYMENT.md)) |
 
 Per-guarantee test evidence (idempotency, concurrency, outbox zero-loss, DLQ, redelivery, …) is listed in the matrix of [TEST_STRATEGY.md](TEST_STRATEGY.md) §3.
 
@@ -42,8 +42,7 @@ Per-guarantee test evidence (idempotency, concurrency, outbox zero-loss, DLQ, re
 
 Remaining observability hardening (use-case spans, `fh.idempotency.hits`, trace-id test), E2E/contract/chaos tests,
 Docker images and the full compose, image build/scan in CI, Terraform/AWS deployment (including CloudWatch alarms and
-`ForwardedHeaders`/TLS at the load balancer), the Admin/Ops UI (Blazor) and performance tests. The CI and CodeQL
-workflows exist but have no recorded run yet. None of these are claimed as done anywhere in the documentation.
+`ForwardedHeaders`/TLS at the load balancer), the Admin/Ops UI (Blazor) and performance tests. None of these are claimed as done anywhere in the documentation.
 
 ## Next
 
