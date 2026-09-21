@@ -20,10 +20,10 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 8 | Transactional outbox + Worker | **done (2026-09-18)** | Gate 8 |
 | 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | **done (2026-09-18)** | Gate 9 |
 | 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **done (2026-09-21)** | Gate 10 |
-| 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **in-progress** (alerting subset in the hardening track) | Gate 11 |
+| 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **done (2026-09-21)** | Gate 11 |
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | **done (2026-09-21)** | Gate 12 |
 | 13 | Docker images + full compose | **done (2026-09-21)** | Gate 13 |
-| 14 | CI (GitHub Actions) | **in-progress** (CI + SAST subset in the hardening track) | Gate 14 |
+| 14 | CI (GitHub Actions) | **done (2026-09-21)** — ECR push moved to Phase 16 | Gate 14 |
 | 15 | AWS IaC (Terraform) — **requires an AWS account and a cost decision** | todo | Gate 15 |
 | 16 | Cloud deployment (ECS Fargate, RDS, SQS, Secrets, CloudWatch alerts) | todo | Gate 16 |
 | 17 | Admin/Ops UI (Blazor) | todo | Gate 17 |
@@ -152,10 +152,11 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 **Gate 10**: checklist with a link to code/test for every item; broken access control tests.
 **Result**: SECURITY.md is the evidence record (threat model §1 with trust boundaries, STRIDE table with status per threat, dispositions §1.5, residual risks §1.6, OWASP §4 with evidence per item); new controls: security headers + HSTS, `POST /orders` per-user rate limit, Kestrel body limit, PII guard test; CORS/HTTPS decided (D-82). Tests 225 → 231.
 
-## Phase 11 — Observability hardening
+## Phase 11 — Observability hardening — `done` (2026-09-21)
 **Goal**: metrics/traces/logs that are useful for operating; incident runbook.
 **Tasks**: our own metrics (OBSERVABILITY.md); spans in worker/outbox/consumers with context propagation (trace parent stored in the outbox and in the SQS message); local dashboards (Aspire Dashboard + saved queries); planned alerts (thresholds); "customer reports slowness" runbook; a test verifying that one order produces a single end-to-end `trace_id`.
 **Gate 11**: runbook actually executed locally with a slow simulator and evidence (screenshots/record in docs).
+**Result**: alerting subset in the hardening track (five provisioned rules, four drills with evidence in `incidents/`); the remainder closed the same day — use-case spans (BL-122), `fh.order.time_to_final` / `fh.idempotency.hits` / `fh.webhooks.processing.duration` (BL-123), `TraceContinuityTests` proving one trace id from the request to the provider call (BL-127). Local dashboards are Grafana (D-78), not the Aspire Dashboard named in the original task list.
 
 ## Phase 12 — Testing hardening — `done` (2026-09-21)
 **Goal**: E2E of the main flows, simulator contract tests, chaos.
@@ -168,10 +169,11 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 **Gate 13**: `docker compose up --build` → the E2E flow passes against containers; images < 250 MB; local scan (Trivy/`docker scout`) without criticals.
 **Result**: `docker/Dockerfile.{api,worker,simulator}` (sdk-alpine build with locked restore → aspnet/runtime-alpine + ICU, `USER app`), compose profile `app` (`migrate` and `seed` one-off containers, healthchecks via BusyBox `wget`, secrets from `.env`), `FulfillmentHub.Api.dll migrate` as the explicit migration task; images 209/168/189 MB; Trivy 0 HIGH/CRITICAL; E2E 3/3 against the containers (DEPLOYMENT.md §2–§3). The Admin image waits for Phase 17.
 
-## Phase 14 — CI (GitHub Actions)
+## Phase 14 — CI (GitHub Actions) — `done` (2026-09-21)
 **Goal**: restore/build/analyzers/unit/integration (Testcontainers)/security scan (CodeQL, dependency review, gitleaks, Trivy)/image build/artifact pipeline.
 **Precondition**: public repository in place (done since Phase 9); pre-publication review (DEPLOYMENT.md §8) executed.
 **Gate 14**: green pipeline on PRs; badges in the README; no secrets in workflows.
+**Result**: `ci.yml` (restore in locked mode, build with analyzers, format, vulnerable-package gate, 245 tests with Testcontainers, dependency review, gitleaks, and — since Phase 13 — image build, size gate, Trivy and the black-box E2E against the containers) + `codeql.yml` (SAST); badges in the README; no repository secrets (the images job writes throwaway values to `.env` on the runner). First runs green on 2026-09-21 (DEPLOYMENT.md §4.1); the `images` job runs for the first time with the next push. ECR push → Phase 16 (BL-170).
 
 ## Phase 15 — AWS IaC (Terraform) — requires an account and a cost decision
 **Goal**: Terraform modules: VPC, subnets, SG, ECR, ECS/Fargate, ALB, RDS PostgreSQL, SQS+DLQ, least-privilege IAM, Secrets Manager, CloudWatch; reviewed `plan`; budget alarm.

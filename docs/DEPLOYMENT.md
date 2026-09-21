@@ -38,14 +38,14 @@ Gate 13 evidence (2026-09-21): `bash scripts/run-e2e.sh` against the containers 
 queues); images 168–209 MB; Trivy 0 HIGH/CRITICAL. Tear down with `docker compose --profile deps --profile app down`
 (`-v` also drops the volumes).
 
-## 4. CI — Implemented (GitHub Actions, 2026-09-21, D-81); image pipeline Planned (Phase 14)
+## 4. CI — Implemented (GitHub Actions, 2026-09-21, D-81); ECR push Planned (Phase 16)
 
 Two workflows in `.github/workflows/`, both with explicit least-privilege `permissions:` and `concurrency` cancelling
 stale runs; **no repository secrets** are required (the tests generate their own keys and containers).
 
 | Workflow | Trigger | Jobs / steps | Gate |
 |---|---|---|---|
-| `ci.yml` — *CI* | push to `main`, pull requests, manual | **build-test** on `ubuntu-latest`: `setup-dotnet` from `global.json` → `dotnet restore` → `dotnet build -c Release` (`TreatWarningsAsErrors`, analyzers) → `dotnet format --verify-no-changes` → `dotnet list package --vulnerable --include-transitive` (fails on any advisory) → `dotnet test --solution` (unit, architecture, integration with Testcontainers: PostgreSQL + LocalStack on the runner's Docker) → JUnit results artifact. **dependency-review** (pull requests only, fails on ≥ moderate). **secrets**: gitleaks over the full history | every step must pass |
+| `ci.yml` — *CI* | push to `main`, pull requests, manual | **build-test** on `ubuntu-latest`: `setup-dotnet` from `global.json` → `dotnet restore` → `dotnet build -c Release` (`TreatWarningsAsErrors`, analyzers) → `dotnet format --verify-no-changes` → `dotnet list package --vulnerable --include-transitive` (fails on any advisory) → `dotnet test --solution` (unit, architecture, integration with Testcontainers: PostgreSQL + LocalStack on the runner's Docker) → JUnit results artifact. **dependency-review** (pull requests only, fails on ≥ moderate). **secrets**: gitleaks over the full history. **images** (Phase 13/14): `docker compose build` of the three images → size gate (< 250 MB) → Trivy `HIGH,CRITICAL --ignore-unfixed --exit-code 1` → full stack up with throwaway secrets written to `.env` on the runner → `FulfillmentHub.E2ETests` against the containers → logs on failure → `down -v` | every step must pass |
 | `codeql.yml` — *CodeQL (SAST)* | push to `main`, pull requests, weekly (Mon 06:17 UTC), manual | `codeql-action/init` (C#, `security-extended`, `build-mode: manual`) → `dotnet build -c Release -p:UseSharedCompilation=false` under the tracer → `codeql-action/analyze` → SARIF uploaded to *Security → Code scanning* | `error`-level alerts fail the PR check |
 
 Local equivalents: the same commands in DEVELOPMENT.md §3; `actionlint` was run against both files
@@ -69,9 +69,10 @@ Procedure for every later run:
    the *Dependency graph* (required by dependency review; on for public repositories by default).
 5. Triage any CodeQL finding with the procedure in `docs/SECURITY.md` §6.2 before adding the badge to the README.
 
-### 4.2 Not yet in CI (Phase 13/14)
-Image build (`docker build` of Api/Worker/Simulator), Trivy scan, push to ECR with OIDC — they need the Dockerfiles
-from Phase 13. Coverage report (informational) and a NuGet lock file (`--locked-mode`, BL-169) are P2.
+### 4.2 Not yet in CI
+Push to ECR with OIDC (Phase 16, BL-170: needs the AWS account) and a coverage report (informational, P2). Restore runs
+in locked mode since 2026-09-21 (BL-169). The `images` job was added on 2026-09-21 after Phase 13 and is linted; its first
+GitHub execution happens with the next push.
 
 ## 5. Terraform (Phase 15)
 

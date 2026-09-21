@@ -101,3 +101,69 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  images:
+    name: Images · Trivy · E2E against containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET (from global.json)
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Throwaway secrets for this run (.env is never committed)
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "JWT_SIGNING_KEY=$(openssl rand -hex 32)"
+            echo "SEED_ADMIN_PASSWORD=$(openssl rand -hex 12)"
+            echo "SEED_OPERATOR_PASSWORD=$(openssl rand -hex 12)"
+            echo "SEED_CUSTOMER_PASSWORD=$(openssl rand -hex 12)"
+          } > .env
+
+      - name: Build images (docker/Dockerfile.*)
+        run: docker compose --profile deps --profile app build
+
+      - name: Image sizes (Gate 13 — under 250 MB)
+        run: |
+          docker images "fulfillmenthub/*" --format "{{.Repository}}:{{.Tag}} {{.Size}}"
+          for image in fulfillmenthub/api:local fulfillmenthub/worker:local fulfillmenthub/simulator:local; do
+            bytes=$(docker image inspect "$image" --format '{{.Size}}')
+            if [ "$bytes" -gt 262144000 ]; then echo "::error::$image is larger than 250 MB"; exit 1; fi
+          done
+
+      - name: Trivy (HIGH/CRITICAL, fixed vulnerabilities fail the job)
+        run: |
+          for image in fulfillmenthub/api:local fulfillmenthub/worker:local fulfillmenthub/simulator:local; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
+
+      - name: Start the full stack
+        run: |
+          docker compose --profile deps --profile app up -d
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5000/health/ready >/dev/null; then echo "API ready after ${i}x2s"; exit 0; fi
+            sleep 2
+          done
+          echo "::error::API did not become ready"; docker compose --profile deps --profile app ps -a; exit 1
+
+      - name: E2E (black box, public API only)
+        env:
+          FH_E2E_API_URL: http://localhost:5000
+        run: |
+          FH_E2E_CUSTOMER_PASSWORD="$(sed -n 's/^SEED_CUSTOMER_PASSWORD=//p' .env)"
+          export FH_E2E_CUSTOMER_PASSWORD
+          dotnet test --project tests/FulfillmentHub.E2ETests --configuration Release
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose --profile deps --profile app logs --no-color --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile deps --profile app down -v --remove-orphans

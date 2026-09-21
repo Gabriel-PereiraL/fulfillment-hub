@@ -1,5 +1,8 @@
 # FulfillmentHub
 
+[![CI](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/workflows/ci.yml/badge.svg)](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/workflows/codeql.yml/badge.svg)](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/workflows/codeql.yml)
+
 A backend for **orchestrating orders, payments and deliveries**, written in **C# 14 / .NET 10** as a modular monolith.
 It exists to show how real backend problems are handled in code: idempotency, concurrency, consistency between the
 database and external effects (transactional outbox), messaging with idempotent consumers, resilient HTTP integrations,
@@ -8,11 +11,11 @@ signed webhooks, security and observability — each of them covered by tests th
 > This is an engineering portfolio project built to demonstrate production-oriented backend practices in C#/.NET.
 > It is not a commercial product and does not represent a real logistics or payment operation.
 
-**Status (2026-09-21):** phases 0–10 of 20 complete, plus the alerting part of Phase 11 and the CI/SAST part of
-Phase 14 (a cross-phase hardening track). An order travels `Created → AwaitingPayment → Paid → DeliveryRequested →
+**Status (2026-09-21):** phases 0–14 of 20 complete. An order travels `Created → AwaitingPayment → Paid → DeliveryRequested →
 InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues (LocalStack) and
-the providers answering through signed webhooks. Alerts fire from real metrics on the local Grafana stack, and the
-GitHub Actions workflows (build/test, CodeQL) ran green on the first push.
+the providers answering through signed webhooks. Alerts fire from real metrics on the local Grafana stack; the whole system
+runs in containers (`docker compose --profile deps --profile app up --build`) and the black-box E2E flows pass against
+them; CI (build, tests, images, Trivy, E2E) and CodeQL run on GitHub Actions.
 Project status in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.
@@ -61,11 +64,17 @@ Periodic reconciliation covers lost webhooks; the DLQ and the admin endpoints co
   business and operational metrics, correlation id; locally `grafana/otel-lgtm` (Prometheus, Tempo, Loki, Grafana) with
   a provisioned dashboard and **five alert rules** (5xx rate, p95 latency, worker heartbeat, outbox backlog, DLQ) —
   four of them provoked and observed firing end to end ([docs/incidents](docs/incidents/2026-09-21-slow-provider-drill.md)).
-- **CI / SAST**: `ci.yml` (build with analyzers, format, vulnerable-package gate, full test suite with Testcontainers,
-  dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) in `.github/workflows/` — executed on
-  2026-09-21: CodeQL green (63 rules, 1 finding triaged as false positive), CI green after one timing fix in a test
-  poller (see [docs/DEPLOYMENT.md §4.1](docs/DEPLOYMENT.md)).
-- **Tests**: 231 (125 unit, 6 architecture, 100 integration) — the integration tests host the API, the Worker and the
+- **Testing hardening** (Phase 12): black-box E2E project over the public API (delivered / declined payment / returned
+  delivery), provider contract tests (client wire records vs. simulator wire records, both directions), a chaos
+  convergence test (simulator failing 30 % of calls → every order still delivered, one payment each), one end-to-end
+  trace-id test.
+- **Containers** (Phase 13): multi-stage Alpine images for API, Worker and simulator (non-root, 168–209 MB, Trivy 0
+  HIGH/CRITICAL), a compose profile that runs the full system with one-off `migrate`/`seed` containers.
+- **CI / SAST** (Phase 14): `ci.yml` (locked restore, build with analyzers, format, vulnerable-package gate, full test
+  suite with Testcontainers, dependency review, gitleaks, image build + size gate + Trivy + E2E against the containers)
+  and `codeql.yml` (CodeQL C#, `security-extended`) — first runs green on 2026-09-21, 1 CodeQL finding triaged as a
+  false positive ([docs/DEPLOYMENT.md §4](docs/DEPLOYMENT.md)).
+- **Tests**: 248 (137 unit, 6 architecture, 102 integration, 3 black-box E2E) — the integration tests host the API, the Worker and the
   simulator in-process against real PostgreSQL and LocalStack containers (Testcontainers), with webhooks travelling
   between the hosts.
 
@@ -118,9 +127,8 @@ engineering work. AI-generated changes are reviewed, tested and validated before
 
 ## Roadmap (not implemented yet)
 
-Rest of observability hardening (use-case spans, remaining metrics, trace-id test) → testing hardening (E2E, chaos) →
-Docker images and full compose → image build/scan in CI → IaC (Terraform) and AWS deployment (ECS Fargate, RDS, SQS,
-CloudWatch alarms) → Admin/Ops UI (Blazor) → performance and resilience tests → portfolio release. Nothing in this
+IaC (Terraform) and AWS deployment (ECS Fargate, RDS, SQS, Secrets Manager, CloudWatch alarms, ECR push from CI) →
+Admin/Ops UI (Blazor) → performance and resilience tests → documentation hardening → portfolio release. Nothing in this
 list is claimed as done anywhere in the documentation.
 Details and acceptance criteria per phase in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -137,6 +145,8 @@ Prerequisites: .NET SDK 10, Docker Desktop. Full walkthrough in [docs/DEVELOPMEN
 ```bash
 cp .env.example .env                        # local Postgres password (not a real secret)
 docker compose --profile deps up -d         # PostgreSQL, LocalStack (SQS) and grafana/otel-lgtm (Grafana on :3000)
+# or everything in containers (after adding JWT_SIGNING_KEY and SEED_*_PASSWORD to .env):
+#   docker compose --profile deps --profile app up --build -d   # then: bash scripts/run-e2e.sh
 dotnet tool restore
 # development secrets live in user-secrets, never in versioned files:
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<POSTGRES_PASSWORD>" --project src/FulfillmentHub.Api
@@ -152,7 +162,8 @@ dotnet run --project src/FulfillmentHub.Api               # http://localhost:500
 ## Tests
 
 ```bash
-dotnet test --solution FulfillmentHub.slnx   # 231 tests; Docker required for the integration tests
+dotnet test --solution FulfillmentHub.slnx   # 245 tests (Docker required); the 3 E2E tests skip unless FH_E2E_API_URL is set
+bash scripts/run-e2e.sh                       # black-box E2E against the running stack (dotnet run hosts or the containers)
 ```
 
 ## Security and observability evidence
@@ -164,7 +175,8 @@ dotnet test --solution FulfillmentHub.slnx   # 231 tests; Docker required for th
 | Metrics, traces, correlation id, health checks | implemented | [docs/OBSERVABILITY.md §2–§5](docs/OBSERVABILITY.md), [CorrelationIdMiddleware](src/FulfillmentHub.Api/Middleware/CorrelationIdMiddleware.cs), `/health/live`, `/health/ready` |
 | Alert rules evaluated on real metrics | implemented locally (Grafana provisioning) | [observability/grafana/provisioning/alerting](observability/grafana/provisioning/alerting/fulfillmenthub-alerts.yaml), [docs/OBSERVABILITY.md §6](docs/OBSERVABILITY.md) |
 | Alerts observed firing and resolving | executed 2026-09-21 (p95, worker heartbeat, DLQ, 5xx) | [docs/incidents/2026-09-21-slow-provider-drill.md](docs/incidents/2026-09-21-slow-provider-drill.md) |
-| CI (build, analyzers, format, vulnerable packages, tests) | **executed** — [run 35606335238](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335238) green, 231/231 tests on the runner | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| CI (build, analyzers, format, vulnerable packages, tests, images, Trivy, E2E) | **executed** — [run 35606335238](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335238) green (231/231 at the time); the `images` job added with Phase 13 runs with the next push |
+| Containers and black-box E2E | **executed locally** — E2E 3/3 against the compose stack, images 168–209 MB, Trivy 0 HIGH/CRITICAL (2026-09-21) | [docs/DEPLOYMENT.md §2–§3](docs/DEPLOYMENT.md), [tests/FulfillmentHub.E2ETests](tests/FulfillmentHub.E2ETests) | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 | SAST with CodeQL | **executed** — [run 35606335294](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335294) green, 63 rules, 1 finding triaged (false positive, justified), 0 open | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
 
 ## Disclaimer
