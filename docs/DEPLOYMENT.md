@@ -59,6 +59,8 @@ Pushed with the owner's authorization on 2026-09-21 (`847bddf..85b7653`). Result
 | CodeQL (SAST) | [35605030657](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030657) | **green** in 2 min 58 s; 63 C# rules; 1 finding (`cs/log-forging`, medium) triaged as a false positive with justification — SECURITY.md §6.4; 0 open alerts |
 | CI | [35605030618](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030618) | build, format, vulnerable-package gate and gitleaks **green**; tests **230/231** — `PaymentFlowTests.PlaceOrder_InitiatesPayment_AndWebhookMarksOrderPaid` timed out waiting for `Paid` because the order was already `Delivered` (fast runner; the poller compared statuses for equality). Fixed in the test support (the poller now accepts a later happy-path status); reference run on the fix commit `0b2ecde`: [35606335238](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335238) — **green, 231/231** in 2 min 11 s; CodeQL [35606335294](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35606335294) green |
 
+**Phases 11–14 remote gate (2026-09-21, commit `907478d`)** — CI [35623513605](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35623513605): locked-mode restore ✓, build 0 warnings ✓, 248 tests (245 passed, 3 E2E skipped in the unit/integration job) ✓, 0 vulnerable packages ✓, gitleaks ✓; **images job** 3 min 33 s: images built on the runner at 144/117/130 MB (api/worker/simulator) ✓, Trivy 0 HIGH/CRITICAL on all three ✓, stack ready after 4 s ✓, **E2E 3/3 against the containers** ✓, `down -v` removed containers, network and volumes ✓. CodeQL [35623513653](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35623513653) green (63 rules, the single already-triaged finding, 0 open alerts).
+
 Procedure for every later run:
 1. *Actions* tab → workflow *CI* → the run for the pushed commit must be green; download the `test-results` artifact.
 2. *Actions* tab → *CodeQL (SAST)* → green run; *Security → Code scanning* lists the analysis (tool "CodeQL",
@@ -71,8 +73,7 @@ Procedure for every later run:
 
 ### 4.2 Not yet in CI
 Push to ECR with OIDC (Phase 16, BL-170: needs the AWS account) and a coverage report (informational, P2). Restore runs
-in locked mode since 2026-09-21 (BL-169). The `images` job was added on 2026-09-21 after Phase 13 and is linted; its first
-GitHub execution happens with the next push.
+in locked mode since 2026-09-21 (BL-169). The `images` job ran green on GitHub on 2026-09-21 (run 35623513605).
 
 ## 5. Terraform (Phase 15)
 

@@ -19,8 +19,8 @@ Last update: 2026-09-21.
 - Build: 0 warnings (`TreatWarningsAsErrors`); `dotnet format` clean; 0 vulnerable packages
   (`dotnet list package --vulnerable --include-transitive`, locked restore); images 168–209 MB with Trivy 0 HIGH/CRITICAL;
   workflows linted with `actionlint`.
-- Pending GitHub validation: the CI `images` job (image build, Trivy, E2E against containers) and the locked-mode restore
-  were added after the last push and have not run on GitHub yet.
+- Remote gate of Phases 11–14 closed on 2026-09-21: CI run 35623513605 (locked restore, 245 tests, images 144/117/130 MB on
+  the runner, Trivy 0 HIGH/CRITICAL, E2E 3/3 against the containers, clean teardown) and CodeQL run 35623513653 green.
 
 ## Completed capabilities
 
