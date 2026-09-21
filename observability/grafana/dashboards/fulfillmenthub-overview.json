@@ -1,0 +1,167 @@
+{
+  "uid": "fh-overview",
+  "title": "FulfillmentHub — Overview",
+  "tags": ["fulfillmenthub"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "API requests / s by status class",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status_class) (label_replace(rate(http_server_request_duration_seconds_count{job=\"fulfillmenthub-api\"}[1m]), \"status_class\", \"$1xx\", \"http_response_status_code\", \"(.).*\"))",
+          "legendFormat": "{{status_class}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "API 5xx rate (%) — alert ApiHigh5xxRate > 2",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 2 }] },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(rate(http_server_request_duration_seconds_count{job=\"fulfillmenthub-api\",http_response_status_code=~\"5..\"}[2m])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{job=\"fulfillmenthub-api\"}[2m]))",
+          "legendFormat": "5xx %"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "API p95 latency by route — alert ApiHighLatencyP95 > 0.8 s",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.8 }] },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"fulfillmenthub-api\",http_route=~\"/api/.*\"}[2m])))",
+          "legendFormat": "{{http_route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Provider calls p95 (http.client) by server",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, job, server_address) (rate(http_client_request_duration_seconds_bucket[2m])))",
+          "legendFormat": "{{job}} → {{server_address}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Worker heartbeats / 2 min — alert WorkerHeartbeatMissing < 1",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(fh_worker_heartbeats_total{job=\"fulfillmenthub-worker\"}[2m])) or vector(0)",
+          "legendFormat": "heartbeats"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Outbox pending / failed — alert OutboxBacklog pending > 10",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 10 }] },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "max(fh_outbox_pending{job=\"fulfillmenthub-worker\"})", "legendFormat": "pending" },
+        { "refId": "B", "expr": "max(fh_outbox_failed{job=\"fulfillmenthub-worker\"})", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Outbox publish outcomes / min",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (increase(fh_outbox_published_total{job=\"fulfillmenthub-worker\"}[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Queues: DLQ depth and message age p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        { "refId": "A", "expr": "max by (queue) (fh_queue_dlq_depth)", "legendFormat": "dlq {{queue}}" },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, queue) (rate(fh_queue_message_age_seconds_bucket[2m])))",
+          "legendFormat": "age p95 {{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Webhooks received / rejected per minute",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (provider) (increase(fh_webhooks_received_total[1m]))", "legendFormat": "received {{provider}}" },
+        { "refId": "B", "expr": "sum by (reason) (increase(fh_webhooks_rejected_total[1m]))", "legendFormat": "rejected {{reason}}" }
+      ]
+    }
+  ]
+}

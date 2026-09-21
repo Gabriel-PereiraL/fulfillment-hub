@@ -1,5 +1,5 @@
-# Local dependencies for FulfillmentHub. Application hosts run with `dotnet run` (profile "deps")
-# until Phase 13 adds their images. Values come from .env (see .env.example) — never commit .env.
+# Local dependencies for FulfillmentHub (profile "deps": postgres, localstack, otel-lgtm). Application hosts run
+# with `dotnet run` until Phase 13 adds their images. Values come from .env (see .env.example) — never commit .env.
 name: fulfillmenthub
 
 services:
@@ -35,16 +35,42 @@ services:
       timeout: 3s
       retries: 20
 
-  # Standalone OpenTelemetry UI (traces, logs, metrics) for local development only.
-  # This is NOT .NET Aspire orchestration; hosts export OTLP to it via OTEL_EXPORTER_OTLP_ENDPOINT.
+  # Local observability backend (D-78, ADR-009 addendum): OTel Collector + Prometheus + Tempo + Loki + Grafana in one
+  # container. Hosts export OTLP to it (OTEL_EXPORTER_OTLP_ENDPOINT, gRPC 4317). Grafana at http://localhost:3000
+  # (anonymous admin, local only). Datasources come with the image; the FulfillmentHub dashboard and the alert rules
+  # are provisioned from ./observability (docs/OBSERVABILITY.md §6, §8).
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.33.1
+    profiles: ["deps"]
+    environment:
+      ENABLE_LOGS_ALL: "false"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+      - "${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTLP_HTTP_PORT:-4318}:4318"
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/grafana/provisioning/alerting/fulfillmenthub-alerts.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/fulfillmenthub-alerts.yaml:ro
+      - ./observability/grafana/provisioning/dashboards/fulfillmenthub-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/fulfillmenthub-dashboards.yaml:ro
+      - ./observability/grafana/dashboards:/otel-lgtm/fulfillmenthub-dashboards:ro
+      - lgtm-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Optional lightweight alternative (profile "aspire"): the standalone .NET Aspire Dashboard UI (no persistence, no
+  # alerting). Point OTEL_EXPORTER_OTLP_ENDPOINT at http://localhost:4327 (ASPIRE_OTLP_PORT) to use it instead.
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
-    profiles: ["deps"]
+    profiles: ["aspire"]
     environment:
       DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
     ports:
       - "${ASPIRE_DASHBOARD_PORT:-18888}:18888"
-      - "${OTLP_GRPC_PORT:-4317}:18889"
+      - "${ASPIRE_OTLP_PORT:-4327}:18889"
 
 volumes:
   postgres-data:
+  lgtm-data:

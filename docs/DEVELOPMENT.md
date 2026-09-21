@@ -17,7 +17,7 @@
 cd FulfillmentHub
 dotnet --version                       # 10.0.x
 cp .env.example .env                   # set POSTGRES_PASSWORD (local value; .env is ignored by Git)
-docker compose --profile deps up -d    # postgres (5432) + localstack SQS (4566) + aspire-dashboard (UI 18888, OTLP gRPC 4317)
+docker compose --profile deps up -d    # postgres (5432) + localstack SQS (4566) + otel-lgtm (Grafana 3000, OTLP gRPC 4317, Prometheus 9090)
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<same as .env>" --project src/FulfillmentHub.Api
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<same as .env>" --project src/FulfillmentHub.Worker
 dotnet user-secrets set "Jwt:SigningKey" "<64 random chars, e.g. openssl rand -base64 48>" --project src/FulfillmentHub.Api
@@ -42,7 +42,7 @@ dotnet run --project src/FulfillmentHub.Worker
 dotnet run --project src/FulfillmentHub.ProviderSimulator # http://localhost:5100/health/live — sends webhooks to http://localhost:5000/api/v1/webhooks/payments
 ```
 
-Aspire Dashboard: http://localhost:18888 (traces/logs/metrics). The hosts export OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (it already is in `appsettings.Development.json`).
+Observability: Grafana at http://localhost:3000 (dashboard *FulfillmentHub — Overview*, alert rules, Explore for Prometheus/Tempo/Loki) — see OBSERVABILITY.md §8 for the reproducible alert scenarios and the helper scripts (`scripts/place-orders.sh`, `scripts/alerts-status.sh`). The hosts export OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (it already is in `appsettings.Development.json`, together with a 10 s metric export interval). The lighter Aspire Dashboard is still available: `docker compose --profile aspire up -d` and point the endpoint at `http://localhost:4327`.
 
 SQS (Phase 9): in Development `Messaging:Sqs:Enabled=true` points at the compose LocalStack (`http://localhost:4566`, placeholder credentials `test`/`test` — not secrets). The Worker creates the `fh-domain-events`/`fh-webhooks-inbound` queues (+ `-dlq`) on startup; inspect them with `docker exec fulfillmenthub-localstack-1 awslocal sqs list-queues`. Without LocalStack, set `Messaging__Sqs__Enabled=false`: the outbox dispatches in-process and webhooks are processed inside the request (same behaviour, no queue).
 
@@ -55,8 +55,11 @@ dotnet test --project tests/FulfillmentHub.UnitTests    # a single project
 dotnet format FulfillmentHub.slnx --verify-no-changes   # style (.editorconfig)
 dotnet ef migrations add <Name> --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api --output-dir Persistence/Migrations
 dotnet ef migrations script --idempotent -o artifacts/migrate.sql --project src/FulfillmentHub.Infrastructure --startup-project src/FulfillmentHub.Api
-dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive
+dotnet list FulfillmentHub.slnx package --vulnerable --include-transitive   # also a CI gate
+bash scripts/alerts-status.sh                           # state of the local alert rules (Grafana)
 ```
+
+CI runs the same commands (`.github/workflows/ci.yml`) plus CodeQL (`codeql.yml`); see DEPLOYMENT.md §4.
 
 The tests use the Microsoft.Testing.Platform (`global.json` → `test.runner`): use `--solution`/`--project`, not the positional path.
 

@@ -1,0 +1,190 @@
+# FulfillmentHub alert rules — Grafana unified alerting, provisioned from this file (D-78, D-79).
+# Catalog with reason/impact/likely cause/first action: docs/OBSERVABILITY.md §6 (five rules, D-79 as amended).
+# Thresholds and windows below are the LOCAL DRILL values (short, so a scenario fires in ~1–2 minutes); production values are documented next to each rule.
+# Metric names are the Prometheus translation of the OTLP names (dots → underscores, unit suffix, _total for counters).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: fulfillmenthub
+    folder: FulfillmentHub
+    interval: 30s
+    rules:
+      # ---------------------------------------------------------------------------------------------------------------
+      # ApiHigh5xxRate — share of 5xx responses over the last 2 minutes (production: > 2% over 5 min).
+      # ---------------------------------------------------------------------------------------------------------------
+      - uid: fh-api-5xx-rate
+        title: ApiHigh5xxRate
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: high
+          service: fulfillmenthub-api
+          runbook: RB-1
+        annotations:
+          summary: "API 5xx rate above 2% ({{ humanize $values.A }}%)"
+          description: "Share of HTTP 5xx responses of fulfillmenthub-api over 2 minutes. Likely causes: database unavailable, unhandled exception in a handler, dependency timeout surfacing as 500. First action: open the API error logs filtered by EventId 1000 and the failing trace (docs/OBSERVABILITY.md §6, RB-1)."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                100 *
+                (sum(rate(http_server_request_duration_seconds_count{job="fulfillmenthub-api",http_response_status_code=~"5.."}[2m])) or vector(0))
+                /
+                sum(rate(http_server_request_duration_seconds_count{job="fulfillmenthub-api"}[2m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+
+      # ---------------------------------------------------------------------------------------------------------------
+      # ApiHighLatencyP95 — p95 of http.server.request.duration for /api routes over 2 minutes (production: > 0.8 s over 5 min).
+      # ---------------------------------------------------------------------------------------------------------------
+      - uid: fh-api-latency-p95
+        title: ApiHighLatencyP95
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: medium
+          service: fulfillmenthub-api
+          runbook: RB-2
+        annotations:
+          summary: "API p95 latency above 800 ms ({{ humanize $values.A }} s)"
+          description: "p95 of http.server.request.duration for /api/* routes of fulfillmenthub-api over 2 minutes. Likely causes: slow delivery-provider quote inside POST /orders, slow database, retries. First action: open a slow POST /orders trace in Grafana → Tempo and look at the 'Provider CreateQuote' span (docs/OBSERVABILITY.md §7, RB-2)."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                histogram_quantile(0.95,
+                  sum by (le) (rate(http_server_request_duration_seconds_bucket{job="fulfillmenthub-api",http_route=~"/api/.*"}[2m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+
+      # ---------------------------------------------------------------------------------------------------------------
+      # WorkerHeartbeatMissing — fewer than one fh.worker.heartbeats increment in 2 minutes (normal: one every 15 s;
+      # production: 3 min window). `or vector(0)` turns "no series at all" into a firing 0.
+      # ---------------------------------------------------------------------------------------------------------------
+      - uid: fh-worker-heartbeat
+        title: WorkerHeartbeatMissing
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: high
+          service: fulfillmenthub-worker
+          runbook: RB-6
+        annotations:
+          summary: "No worker heartbeat in the last 2 minutes"
+          description: "fh.worker.heartbeats stopped increasing: the Worker host is down or hung. Impact: outbox messages, queue consumers and reconciliation jobs stop — paid orders are not sent to delivery. First action: check the worker process/container and its last log lines (docs/OBSERVABILITY.md §6, RB-6)."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum(increase(fh_worker_heartbeats_total{job="fulfillmenthub-worker"}[2m])) or vector(0)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      # ---------------------------------------------------------------------------------------------------------------
+      # OutboxBacklog — pending outbox messages (gauge refreshed by every publisher pass) above 10 for 1 minute
+      # (production: > 500, or lag p95 > 60 s over 5 min).
+      # ---------------------------------------------------------------------------------------------------------------
+      - uid: fh-outbox-backlog
+        title: OutboxBacklog
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: high
+          service: fulfillmenthub-worker
+          runbook: RB-4
+        annotations:
+          summary: "Outbox backlog: {{ humanize $values.A }} pending messages"
+          description: "fh.outbox.pending stays above the threshold: the publisher cannot hand messages to SQS (broker unavailable, database slow) or — with Messaging:Sqs:Enabled=false — the in-process handlers keep retrying (provider down). Impact: payments/deliveries are delayed for every new order. First action: look at fh.outbox.published{outcome=retried|failed} by type and at /api/v1/admin/outbox for last_error (docs/OBSERVABILITY.md §7, RB-4)."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max(fh_outbox_pending{job="fulfillmenthub-worker"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+
+      # ---------------------------------------------------------------------------------------------------------------
+      # QueueDlqNotEmpty — a message reached a dead-letter queue (fh.queue.dlq.depth, refreshed by the Worker every 30 s).
+      # In SQS mode a consumer that keeps failing (provider down/rejecting) redelivers with backoff and, after
+      # MaxReceiveCount, parks the message here; the outbox stays "Processed" because publishing to SQS succeeded.
+      # Same threshold in production (> 0); the early-warning variant (message age p95) is documented, not provisioned.
+      # ---------------------------------------------------------------------------------------------------------------
+      - uid: fh-queue-dlq
+        title: QueueDlqNotEmpty
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: high
+          service: fulfillmenthub-worker
+          runbook: RB-5
+        annotations:
+          summary: "Dead-letter queue not empty ({{ humanize $values.A }} messages)"
+          description: "At least one message exhausted its receives on fh-domain-events or fh-webhooks-inbound. Likely causes: payment/delivery provider down or rejecting for longer than the redelivery budget, a poison message, a bug in a handler. Impact: the affected orders are stuck (no payment/delivery) until the message is redriven. First action: fh.queue.messages.failed by reason and the worker logs for the failing handler; after the cause is fixed, redrive the DLQ (docs/OBSERVABILITY.md §7, RB-5)."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max(fh_queue_dlq_depth{job="fulfillmenthub-worker"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }

@@ -25,3 +25,10 @@ No extra adapters; `trace_id` correlation in the logs is automatic; the Aspire D
 ## Consequences
 - Catalog of metrics/spans/alerts in OBSERVABILITY.md; runbook executed in Phase 11.
 - `traceparent` propagated through the outbox and SQS.
+
+## Addendum 2026-09-21 — local backend changed to `grafana/otel-lgtm` (D-78)
+The hardening track needed alert rules evaluated against persisted metrics, which the Aspire Dashboard cannot do.
+The local backend is now `grafana/otel-lgtm` (OTel Collector + Prometheus + Tempo + Loki + Grafana, one container,
+pinned to 0.33.1), with the FulfillmentHub dashboard and five alert rules provisioned from files under `observability/`.
+The application code and the OTLP export did not change; the Aspire Dashboard remains an opt-in compose profile.
+The AWS decision (ADOT → CloudWatch/X-Ray) is unchanged; the local rules are the template for the CloudWatch alarms.
