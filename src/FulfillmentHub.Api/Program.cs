@@ -22,6 +22,11 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Request body ceiling for the whole API (D-83). Kestrel does not bind `Limits` from configuration on its own, so the
+// value in appsettings (`Kestrel:Limits:MaxRequestBodySize`, 256 KB) is applied here; webhooks keep their own 64 KB.
+builder.WebHost.ConfigureKestrel(kestrel =>
+    kestrel.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long?>("Kestrel:Limits:MaxRequestBodySize") ?? 262_144);
+
 builder.AddFulfillmentHubTelemetry("fulfillmenthub-api")
     .WithTracing(tracing => tracing.AddAspNetCoreInstrumentation())
     .WithMetrics(metrics => metrics.AddAspNetCoreInstrumentation());
