@@ -19,11 +19,11 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 7 | Delivery webhooks + idempotency + out-of-order events | **done (2026-09-18)** | Gate 7 |
 | 8 | Transactional outbox + Worker | **done (2026-09-18)** | Gate 8 |
 | 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | **done (2026-09-18)** | Gate 9 |
-| 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | todo | Gate 10 |
-| 11 | Observability hardening (metrics, traces, local dashboards, runbook) | todo | Gate 11 |
+| 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **in-progress (hardening track, 2026-09-21)** | Gate 10 |
+| 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **in-progress** (alerting subset in the hardening track) | Gate 11 |
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | todo | Gate 12 |
 | 13 | Docker images + full compose | todo | Gate 13 |
-| 14 | CI (GitHub Actions) — the public repository already exists; no workflow yet | todo | Gate 14 |
+| 14 | CI (GitHub Actions) | **in-progress** (CI + SAST subset in the hardening track) | Gate 14 |
 | 15 | AWS IaC (Terraform) — **requires an AWS account and a cost decision** | todo | Gate 15 |
 | 16 | Cloud deployment (ECS Fargate, RDS, SQS, Secrets, CloudWatch alerts) | todo | Gate 16 |
 | 17 | Admin/Ops UI (Blazor) | todo | Gate 17 |
@@ -32,6 +32,42 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 20 | Portfolio release (anti-leak review, final README) | todo | Gate 20 |
 
 ---
+
+## Hardening track (cross-phase, started 2026-09-21) — D-77
+
+A bounded slice of Phases 10, 11 and 14 executed as one track, in this order, without changing business behaviour
+or public API contracts. Each item stays attached to its own phase in the BACKLOG; the phases remain open for what
+the track does not cover.
+
+| Order | Phase | Scope in this track | Out of the track (stays in the phase) |
+|---|---|---|---|
+| 1 | 10 — Security | BL-103 (`POST /orders` rate limit), BL-106 (headers, HSTS, body limit; CORS decision), BL-107 (threat model with trust boundaries, residual risks, dispositions; OWASP checklist), BL-108 (PII guard test), BL-111 (SSRF documented) | nothing — **Gate 10 closes with this track** |
+| 2 | 11 — Observability | BL-128 (`grafana/otel-lgtm` backend + provisioning), BL-129 (four alert rules), BL-130 (fault scenarios), BL-125 (one runbook executed with evidence) | BL-122 use-case spans, BL-123 remaining metrics (`fh.idempotency.hits`, `fh.order.time_to_final`), BL-127 trace-id test, BL-246 |
+| 3 | 14 — CI | BL-166 (`ci.yml`), BL-167 (`codeql.yml` — SAST), BL-168 (dependency review, gitleaks), BL-109 (vulnerable-package gate) | BL-164 image build/Trivy/ECR (needs Phase 13 images) |
+
+**Invariants of the track**: no AWS resources; no new business rules; no fault injection inside the API (D-80); no
+push without the owner's authorization (the CodeQL run on GitHub is the only step that needs it); the existing
+test suite is not reduced; documentation uses `Implemented` / `Partial` / `Planned` / `Accepted risk` literally.
+
+**Risks and how they are contained**
+- *Regression from security middleware/rate limit*: headers are additive; the order rate limit is per user with a
+  default (60/min) three times the busiest test; both covered by integration tests before Gate 5 (regression).
+- *Kestrel body limit*: not observable by the in-memory test server — verified in the smoke run, recorded in SECURITY.md.
+- *Metric names in Prometheus*: OTLP→Prometheus renames `http.server.request.duration` to
+  `http_server_request_duration_seconds`; rules are validated against the running backend before being documented.
+- *Heavy image (`otel-lgtm` ≈ 1 GB)*: one container replaces the Aspire Dashboard in `deps`; Aspire remains opt-in.
+- *CI duration*: the integration suite pulls PostgreSQL and LocalStack images on every run (~5–10 min); acceptable
+  for a portfolio repository; caching is a later optimisation.
+- *CodeQL on .NET 10*: an explicit `dotnet build` step is used instead of autobuild/`build-mode: none` to avoid SDK
+  detection issues; the first real run happens only after the owner pushes.
+
+**Files expected to change**: `src/FulfillmentHub.Api/{Program.cs, Middleware/SecurityHeadersMiddleware.cs,
+Identity/ApiSecurityServiceCollectionExtensions.cs, Identity/RateLimitOptions.cs, Orders/OrdersEndpoints.cs,
+appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/FulfillmentHub.ArchitectureTests/*`;
+`docker-compose.yml`, `.env.example`, `observability/**` (provisioning), `scripts/*`; `.github/workflows/{ci,codeql}.yml`;
+`docs/{SECURITY,OBSERVABILITY,DEPLOYMENT,DEVELOPMENT,PROJECT_STATE,BACKLOG,ROADMAP,DECISIONS}.md`,
+`docs/adr/ADR-009` (addendum), `docs/incidents/*`, `README.md`.
+
 
 ## Phase 0 — Documentation and architecture — `done`
 **Goal**: enough documentation for the project to be continued from the docs alone, without extra context.

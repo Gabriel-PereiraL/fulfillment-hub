@@ -94,28 +94,32 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-100 | user-secrets + `.env.example`; no secret in `appsettings` | 1 | P0 | done |
 | BL-101 | JWT (HS256, key ≥ 32 bytes from secrets, short expiry), authenticated `FallbackPolicy`, per-role policies | 3 | P0 | done |
 | BL-102 | `PasswordHasher<T>` (PBKDF2) and a minimal password policy | 3 | P0 | done |
-| BL-103 | Rate limiting: login (**done**, Phase 3), webhooks (**done**, Phase 5, configurable D-69) and `POST /orders` (Phase 10) | 3/10 | P0 | doing |
+| BL-103 | Rate limiting: login (**done**, Phase 3), webhooks (**done**, Phase 5, configurable D-69) and `POST /orders` per user (D-84) | 3/10 | P0 | doing (hardening track, D-77) |
 | BL-104 | HMAC webhook signature (constant time) + timestamp tolerance + body limit | 5/7 | P0 | done (payment; delivery reuses it in Phase 7) |
 | BL-105 | Resource authorization (a customer only accesses their own orders) + broken access control tests | 4/10 | P0 | done |
-| BL-106 | Security headers, explicit CORS, HTTPS redirection/HSTS (outside dev) | 10 | P0 | todo |
-| BL-107 | Threat model reviewed with evidence; OWASP Top 10 checklist filled in | 10 | P0 | todo |
-| BL-108 | PII redaction in logs (masked phone/e-mail), no webhook body in logs | 10 | P0 | todo |
-| BL-109 | Local `dotnet list package --vulnerable`; CodeQL + dependency review + gitleaks + Trivy in CI | 10/14 | P0 | todo |
+| BL-106 | Security headers + HSTS outside Development (D-82); CORS reviewed and **deliberately not enabled** (D-82); Kestrel body limit (D-83) | 10 | P0 | doing (hardening track, D-77) |
+| BL-113 | HTTPS redirection / `ForwardedHeaders` behind the ALB (TLS terminates at the edge) | 16 | P0 | todo |
+| BL-107 | Threat model reviewed with evidence (assets, actors, trust boundaries, surfaces, threats, controls, residual risks, limitations); planned items dispositioned (D-87); OWASP Top 10 checklist filled in | 10 | P0 | doing (hardening track, D-77) |
+| BL-108 | PII in logs: catalog audited (no e-mail/phone/token/body placeholders) + guard test over every `LoggerMessage` (D-85) | 10 | P0 | doing (hardening track, D-77) |
+| BL-109 | `dotnet list package --vulnerable` as a CI gate; CodeQL (SAST) + dependency review + gitleaks in CI (D-81) — Trivy moves to BL-164 (images, Phase 13/14) | 10/14 | P0 | doing (hardening track, D-77) |
 | BL-110 | Secrets Manager on AWS (the task role reads secrets; nothing in plain env) | 15–16 | P0 | todo |
-| BL-111 | SSRF: no user-supplied URL is ever called (the simulator's webhook URL is configuration) — document | 10 | P1 | todo |
+| BL-111 | SSRF: no user-supplied URL is ever called (provider base URLs are validated configuration) — documented in the threat model | 10 | P1 | doing (hardening track, D-77) |
 
 ## Observability
 
 | ID | Item | Phase | Pri | Status |
 |---|---|---|---|---|
 | BL-120 | Structured JSON logging + `LoggerMessage` source generator + scopes with the correlation id | 1 | P0 | done |
-| BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → Aspire Dashboard | 1 | P0 | done |
+| BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → local backend (Aspire Dashboard in Phase 1; `grafana/otel-lgtm` from the hardening track, D-78) | 1 | P0 | done |
 | BL-122 | Project `ActivitySource`/`Meter`; spans for use cases, provider calls, outbox, consumers | 5–11 | P0 | partial (`FulfillmentHub` meter ✔; `Provider *` spans ✔ Phases 5/6; outbox ✔ Phase 8; queue consumers ✔ Phase 9; use-case spans → Phase 11) |
 | BL-246 | Dedicated provider retry/circuit metrics (`fh.provider.retry.count`, `fh.provider.circuit.state`) — today only the standard `HttpClient` instrumentation | 11 | P2 | todo |
 | BL-123 | Business/operations metrics (OBSERVABILITY.md table) | 11 | P0 | todo |
 | BL-124 | AWS SDK (SQS) instrumentation | 9 | P1 | done (`OpenTelemetry.Instrumentation.AWS`) |
-| BL-125 | Incident runbook executed locally with evidence | 11 | P0 | todo |
-| BL-126 | CloudWatch alerts (5xx rate, p95, DLQ > 0, outbox lag, open CB) | 16 | P0 | todo |
+| BL-125 | Incident runbook executed locally with evidence (`docs/incidents/`) | 11 | P0 | doing (hardening track, D-77) |
+| BL-126 | CloudWatch alarms re-expressing the local rules (BL-129) + DLQ > 0 | 16 | P0 | todo |
+| BL-128 | Local metrics/alerting backend `grafana/otel-lgtm` in compose (D-78), provisioned datasources + one dashboard, Aspire Dashboard as opt-in profile | 11 | P0 | doing (hardening track, D-77) |
+| BL-129 | Four provisioned alert rules (D-79): `ApiHigh5xxRate`, `ApiHighLatencyP95`, `WorkerHeartbeatMissing`, `OutboxBacklog`; catalog with signal/threshold/window/reason/impact/cause/action | 11 | P0 | doing (hardening track, D-77) |
+| BL-130 | Reproducible fault scenarios with existing knobs (D-80): slow/failing provider, database outage, stopped worker; `scripts/` helpers + docs | 11 | P0 | doing (hardening track, D-77) |
 | BL-127 | Test: one order = one end-to-end `trace_id` | 11 | P1 | todo |
 
 ## Tests
@@ -144,7 +148,11 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-161 | `global.json`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig` | 1 | P0 | done |
 | BL-162 | Local `git init`, clean first commit (no secrets or local files) | 1 | P0 | done |
 | BL-163 | Multi-stage non-root Dockerfiles + healthcheck (Api, Worker, Simulator, Admin) | 13 | P0 | todo |
-| BL-164 | GitHub Actions: build/test/scan/image | 14 | P0 | todo |
+| BL-164 | GitHub Actions: image build + Trivy + push to ECR (OIDC) — after Phase 13 | 14 | P0 | todo |
+| BL-166 | `ci.yml`: restore, build Release, format check, vulnerable-package gate, unit/architecture/integration tests (Testcontainers), test results artifact (D-81) | 14 | P0 | doing (hardening track, D-77) |
+| BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | doing (hardening track, D-77) |
+| BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | doing (hardening track, D-77) |
+| BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | todo |
 | BL-165 | `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |
 
 ## AWS

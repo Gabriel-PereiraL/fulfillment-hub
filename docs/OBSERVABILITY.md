@@ -70,7 +70,11 @@ are needed in Phase 11.
 | `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |
 | DB | Npgsql, automatic | summarized statement (no values) |
 
-## 6. Alerts (planned; implemented in Phase 16 with CloudWatch, simulated locally in Phase 11)
+## 6. Alerts
+
+> **Status (2026-09-21): Planned → being implemented in the hardening track (D-77).** Decision D-78 picks `grafana/otel-lgtm` as the
+> local backend and D-79 limits the provisioned rules to four (`ApiHigh5xxRate`, `ApiHighLatencyP95`, `WorkerHeartbeatMissing`,
+> `OutboxBacklog`). The table below is the *candidate catalog*; only rules marked **Implemented** exist as provisioned files.
 
 | Alert | Condition | Severity | Action (runbook) |
 |---|---|---|---|
