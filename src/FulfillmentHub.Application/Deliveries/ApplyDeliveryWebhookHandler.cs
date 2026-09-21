@@ -20,6 +20,9 @@ public sealed class ApplyDeliveryWebhookHandler(
 {
     public async Task<Result<DeliveryEventDisposition>> HandleAsync(DeliveryWebhookCommand command, CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("ApplyDeliveryWebhook");
+        activity?.SetTag("delivery.provider_id", command.ProviderDeliveryId);
+
         var providerName = provider.ProviderName;
         var delivery = await db.Deliveries
             .SingleOrDefaultAsync(d => d.Provider == providerName && d.ProviderDeliveryId == command.ProviderDeliveryId, cancellationToken);

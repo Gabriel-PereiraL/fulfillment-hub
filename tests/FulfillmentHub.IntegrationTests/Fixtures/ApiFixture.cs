@@ -180,7 +180,10 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     {
     }
 
-    private HttpMessageHandler ToSimulator() => new ProviderOutage.Handler(_providerOutage) { InnerHandler = _simulator.Server.CreateHandler() };
+    private HttpMessageHandler ToSimulator() => new ProviderOutage.Handler(_providerOutage)
+    {
+        InnerHandler = new TracePropagationHandler { InnerHandler = _simulator.Server.CreateHandler() },
+    };
 
     private static string RandomLoopbackAddress()
     {

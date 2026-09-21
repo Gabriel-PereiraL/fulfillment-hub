@@ -28,6 +28,9 @@ public sealed partial class PlaceOrderHandler(
 
     public async Task<Result<OrderDto>> HandleAsync(PlaceOrderCommand command, CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("PlaceOrder");
+        activity?.SetTag("order.items.count", command.Lines.Count);
+
         if (currentUser.CustomerId is not { } customerId)
         {
             return Failure.Forbidden("order.no_customer_profile", "The current user has no customer profile.");
@@ -131,6 +134,8 @@ public sealed partial class PlaceOrderHandler(
             }
 
             metrics.OrderPlaced();
+            activity?.SetTag("order.id", order.Id.Value);
+            activity?.SetTag("customer.id", customerId.Value);
             LogOrderPlaced(order.Id, order.Number, order.Items.Count);
             return Result.Ok(OrderDto.From(order));
         }

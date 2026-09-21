@@ -23,6 +23,7 @@ metrics. The Aspire Dashboard stays available as the opt-in `aspire` compose pro
 - `trace_id`/`span_id` (W3C `traceparent`) enter the logs automatically (OTel logs) — the correlation id is a convenience for humans and clients; the trace id is the technical key.
 - Asynchronous propagation: `traceparent` is stored in `outbox_messages.trace_parent` and as an SQS message attribute; the consumer creates the span with `ActivityContext.Parse` (link or parent — decision: **parent** for the continuous flow of one order, link when a batch mixes orders).
 - `order_id`, `payment_id`, `delivery_id`, `provider_event_id` as span attributes and log fields (never personal data).
+- **Proven end to end** (BL-127, `TraceContinuityTests`): a `traceparent` sent to `POST /orders` is the trace id of the `PlaceOrder` span, of the outbox row, of the Worker-side `Outbox OrderPlaced` consumer span, of `CreatePayment`/`Provider CreatePayment` and of the simulator's own server span for `POST /payments/v1/payments`. The provider's *webhook* back to the API starts a new trace (it is a new inbound request from another system); the two are joined by `order_id`/`payment_id` attributes and by the correlation id stored on the inbox row.
 
 ## 3. Logs
 
@@ -38,8 +39,8 @@ metrics. The Aspire Dashboard stays available as the opt-in `aspire` compose pro
 | `http.server.request.duration` | histogram | route, status | native ASP.NET Core | 1 |
 | `http.client.request.duration` | histogram | `server.address`, status | native HttpClient | 1 |
 | `fh.orders.placed` / `fh.orders.cancelled` | counter | `reason` (cancel) | Application (`OrdersMetrics`) | 4 ✔ |
-| `fh.order.time_to_final` | histogram (s) | `final_status` | Worker | 11 (BL-123) |
-| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api filter | 4 — **pending** (only log `4100` for now; counter to be added in Phase 11) |
+| `fh.order.time_to_final` | histogram (s) | `final_status` (`Delivered`, `Cancelled`) | Application (`OrdersMetrics.OrderReachedFinalStatus`, called at every final transition: delivery applier, delivery request rejection, payment failure, customer cancellation) | 11 ✔ |
+| `fh.idempotency.hits` | counter | `outcome` (`replayed`, `conflict`, `mismatch`) | Api (`IdempotencyMetrics`, in `IdempotencyFilter`) | 11 ✔ |
 | `fh.stock.reservation_conflicts` | counter | `kind` (`insufficient_stock`, `concurrent_update`) | Application (`OrdersMetrics`) | 4 ✔ |
 | `fh.provider.request.duration` | histogram | `provider`, `operation`, `status_code`, `attempt` | Infrastructure | 5 — covered by `http.client.request.duration` (OTel `HttpClient` instrumentation, tag `http.request.resend_count` = attempt) + the `Provider <op>` span; a dedicated metric only if the standard one is not enough (BL-246) |
 | `fh.provider.retries` | counter | `provider`, `operation`, `reason` | Polly telemetry | 11 (BL-246; Polly already emits `resilience.polly.strategy.events` today) |
@@ -48,7 +49,7 @@ metrics. The Aspire Dashboard stays available as the opt-in `aspire` compose pro
 | `fh.deliveries.events` | counter | `disposition` (`Applied`, `Duplicate`, `OutOfOrder`, `Stale`, `Conflict`) | Application (`DeliveryStatusApplier`) | 7 ✔ |
 | `fh.payments.settled` | counter | `status` (`paid`, `failed`, `paid_after_cancellation`) | Application (`PaymentStatusApplier`) | 5 ✔ |
 | `fh.deliveries.quotes` / `fh.deliveries.requested` | counter | `outcome` (`quoted`, `fallback_fee`, `rejected`, `requoted` / `created`, `adopted`, `adopted_duplicate`, `deferred`, `rejected`, `quote_expired_twice`) | Application (`DeliveriesMetrics`) | 6 ✔ |
-| `fh.webhooks.processing.duration` | histogram | `provider` | Worker | 7 |
+| `fh.webhooks.processing.duration` | histogram (ms) | `provider`, `outcome` (`Processed`, `Ignored`, `Failed`) | Infrastructure (`WebhookEventProcessor`, whether reached from the queue consumer or the in-process fallback) | 11 ✔ |
 | `fh.outbox.pending` / `fh.outbox.failed` | gauge | — | `OutboxMetrics` (refreshed on every publisher pass) | 8 ✔ |
 | `fh.outbox.published` | counter | `outcome` (`processed`, `retried`, `failed`), `type` | `OutboxProcessor` | 8 ✔ |
 | `fh.outbox.lag` | histogram (s: `now - occurred_at` at publish time) | `type` | `OutboxProcessor` | 8 ✔ |
@@ -63,11 +64,11 @@ metrics. The Aspire Dashboard stays available as the opt-in `aspire` compose pro
 
 | Span | Where | Attributes |
 |---|---|---|
-| `PlaceOrder` (and the other use cases) | Application | `order.id`, `customer.id` (id, not name), `order.items.count` |
+| `PlaceOrder`, `CancelOrder`, `CreatePayment`, `RequestDelivery`, `ApplyPaymentWebhook`, `ApplyDeliveryWebhook` | Application (`ApplicationTelemetry.ActivitySource`) | `order.id`, `customer.id` (id, not name), `order.items.count`, `delivery.provider_id` — Phase 11 ✔ (BL-122) |
 | `Outbox <type>` | Infrastructure (`OutboxProcessor`, runs in the Worker) | `messaging.message.id`, `outbox.attempt`; `ActivityKind.Consumer` with parent = the `trace_parent` stored on the message (the handler span continues the trace of the request that produced the event) — Phase 8 ✔ |
 | `<queue> publish` / `<queue> receive` | Infrastructure/Worker | `messaging.system=aws_sqs`, `messaging.destination.name`, `messaging.message.id`, `messaging.receive_count`; `receive` continues the trace of the `traceparent` sent as a message attribute (BL-088 ✔ Phase 9); SDK instrumented by `OpenTelemetry.Instrumentation.AWS` |
 | `Provider <op>` | Infrastructure | `peer.service=uber-like-simulator`, `provider.operation`, `provider.error.code`, `retry.attempt` — Phase 5 ✔ payment: `Provider CreatePayment/GetPayment/RefundPayment`; Phase 6 ✔ delivery: `Provider CreateQuote/CreateDelivery/GetDelivery/CancelDelivery` (`peer.service=uber-like-simulator`) |
-| `Webhook.Ingest` | Api | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` |
+| `Webhook.Ingest` | Api (`WebhookReceiver`) | `webhook.provider`, `webhook.event.type`, `webhook.duplicate` — Phase 11 ✔ |
 | DB | Npgsql, automatic | summarized statement (no values) |
 
 ## 6. Alerts — Implemented locally (2026-09-21, D-78/D-79)

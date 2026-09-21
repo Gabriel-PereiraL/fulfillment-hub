@@ -11,6 +11,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- packages.lock.json per project (BL-169, OWASP A08): CI restores in locked mode so a dependency cannot change without a reviewed diff. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
     <Authors>FulfillmentHub</Authors>
     <Product>FulfillmentHub</Product>

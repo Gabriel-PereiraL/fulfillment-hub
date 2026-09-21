@@ -38,8 +38,8 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore
-        run: dotnet restore FulfillmentHub.slnx
+      - name: Restore (locked mode — packages.lock.json must match, BL-169)
+        run: dotnet restore FulfillmentHub.slnx --locked-mode
 
       - name: Build (Release, TreatWarningsAsErrors + analyzers)
         run: dotnet build FulfillmentHub.slnx --configuration Release --no-restore

@@ -34,6 +34,7 @@ public sealed partial class RequestDeliveryHandler(
     IDeliveryProviderClient provider,
     IOptions<FulfillmentOriginOptions> origin,
     DeliveriesMetrics metrics,
+    OrdersMetrics ordersMetrics,
     TimeProvider timeProvider,
     ILogger<RequestDeliveryHandler> logger)
 {
@@ -41,6 +42,9 @@ public sealed partial class RequestDeliveryHandler(
 
     public async Task<Result<DeliveryRequestOutcome>> HandleAsync(RequestDeliveryCommand command, CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("RequestDelivery");
+        activity?.SetTag("order.id", command.OrderId);
+
         var orderId = OrderId.From(command.OrderId);
         var order = await db.Orders.SingleOrDefaultAsync(o => o.Id == orderId, cancellationToken);
 
@@ -210,6 +214,7 @@ public sealed partial class RequestDeliveryHandler(
         }
 
         order.Cancel(OrderCancellationReason.DeliveryFailed, now, actor: null, note: failure.Code);
+        ordersMetrics.OrderReachedFinalStatus(order, now);
         await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 

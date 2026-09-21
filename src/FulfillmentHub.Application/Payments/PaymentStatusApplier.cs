@@ -12,7 +12,11 @@ namespace FulfillmentHub.Application.Payments;
 /// the order (paid / cancelled with stock returned). Used by webhooks and by reconciliation, so both paths agree.
 /// Does not call <c>SaveChangesAsync</c>: the caller owns the transaction.
 /// </summary>
-public sealed partial class PaymentStatusApplier(IFulfillmentHubDbContext db, PaymentsMetrics metrics, ILogger<PaymentStatusApplier> logger)
+public sealed partial class PaymentStatusApplier(
+    IFulfillmentHubDbContext db,
+    PaymentsMetrics metrics,
+    OrdersMetrics ordersMetrics,
+    ILogger<PaymentStatusApplier> logger)
 {
     /// <summary>Returns true when the reported status changed something.</summary>
     public async Task<bool> ApplyAsync(
@@ -67,6 +71,7 @@ public sealed partial class PaymentStatusApplier(IFulfillmentHubDbContext db, Pa
                 if (order.CanCancel(OrderCancellationReason.PaymentFailed))
                 {
                     order.Cancel(OrderCancellationReason.PaymentFailed, now, actor: null, note: failureCode);
+                    ordersMetrics.OrderReachedFinalStatus(order, now);
                     await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
                 }
 

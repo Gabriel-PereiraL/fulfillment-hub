@@ -26,6 +26,7 @@ public sealed partial class DeliveryStatusApplier(
     IFulfillmentHubDbContext db,
     DeliveriesMetrics metrics,
     WebhooksMetrics webhooksMetrics,
+    OrdersMetrics ordersMetrics,
     ILogger<DeliveryStatusApplier> logger)
 {
     public async Task<DeliveryEventDisposition> ApplyAsync(Delivery delivery, ProviderDeliveryEvent evt, DateTimeOffset now, CancellationToken cancellationToken)
@@ -64,10 +65,12 @@ public sealed partial class DeliveryStatusApplier(
                 }
 
                 order.MarkDelivered(now);
+                ordersMetrics.OrderReachedFinalStatus(order, now);
                 break;
 
             case DeliveryStatus.Cancelled or DeliveryStatus.Returned when order.Status != OrderStatus.Cancelled && order.CanCancel(OrderCancellationReason.DeliveryFailed):
                 order.Cancel(OrderCancellationReason.DeliveryFailed, now, actor: null, note: evt.ProviderStatus);
+                ordersMetrics.OrderReachedFinalStatus(order, now);
                 await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
                 LogDeliveryFailed(delivery.Id, order.Id, evt.ProviderStatus);
                 break;

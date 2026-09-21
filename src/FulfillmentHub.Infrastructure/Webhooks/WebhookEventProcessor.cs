@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FulfillmentHub.Application.Webhooks;
 using FulfillmentHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,11 @@ namespace FulfillmentHub.Infrastructure.Webhooks;
 /// and records the outcome in the inbox. An event that is no longer <c>Received</c> is acknowledged without work, which
 /// is what makes queue redeliveries and the in-process fallback safe to combine.
 /// </summary>
-public sealed partial class WebhookEventProcessor(IServiceScopeFactory scopeFactory, WebhookInbox inbox, ILogger<WebhookEventProcessor> logger)
+public sealed partial class WebhookEventProcessor(
+    IServiceScopeFactory scopeFactory,
+    WebhookInbox inbox,
+    WebhooksMetrics metrics,
+    ILogger<WebhookEventProcessor> logger)
 {
     public async Task<WebhookOutcome> ProcessAsync(Guid webhookEventId, CancellationToken cancellationToken)
     {
@@ -38,6 +43,7 @@ public sealed partial class WebhookEventProcessor(IServiceScopeFactory scopeFact
         }
 
         WebhookOutcome outcome;
+        var started = Stopwatch.GetTimestamp();
         try
         {
             outcome = await processor.ProcessAsync(webhookEvent, cancellationToken);
@@ -61,6 +67,7 @@ public sealed partial class WebhookEventProcessor(IServiceScopeFactory scopeFact
                 break;
         }
 
+        metrics.Processed(webhookEvent.Provider, outcome.GetType().Name, Stopwatch.GetElapsedTime(started));
         return outcome;
     }
 

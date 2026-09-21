@@ -18,6 +18,7 @@ namespace FulfillmentHub.Api.Idempotency;
 /// </summary>
 public sealed partial class IdempotencyFilter<TRequest, TResponse>(
     IdempotencyStore store,
+    IdempotencyMetrics metrics,
     IOptions<JsonOptions> jsonOptions,
     ILogger<IdempotencyFilter<TRequest, TResponse>> logger) : IEndpointFilter
     where TRequest : class
@@ -52,6 +53,7 @@ public sealed partial class IdempotencyFilter<TRequest, TResponse>(
         switch (outcome.Decision)
         {
             case IdempotencyDecision.Replay:
+                metrics.Hit("replayed");
                 LogReplayed(key);
                 httpContext.Response.Headers[ReplayedHeaderName] = "true";
                 if (outcome.Location is not null)
@@ -64,6 +66,7 @@ public sealed partial class IdempotencyFilter<TRequest, TResponse>(
                     : TypedResults.Content(outcome.Body, outcome.ContentType, Encoding.UTF8, outcome.StatusCode);
 
             case IdempotencyDecision.InProgress:
+                metrics.Hit("conflict");
                 return TypedResults.Problem(
                     title: "Request in progress",
                     detail: "A request with this Idempotency-Key is still being processed.",
@@ -71,6 +74,7 @@ public sealed partial class IdempotencyFilter<TRequest, TResponse>(
                     extensions: new Dictionary<string, object?> { ["code"] = "idempotency.in_progress" });
 
             case IdempotencyDecision.Mismatch:
+                metrics.Hit("mismatch");
                 return TypedResults.Problem(
                     title: "Idempotency-Key reused",
                     detail: "This Idempotency-Key was already used with a different request payload.",

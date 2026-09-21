@@ -111,16 +111,16 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 |---|---|---|---|---|
 | BL-120 | Structured JSON logging + `LoggerMessage` source generator + scopes with the correlation id | 1 | P0 | done |
 | BL-121 | OpenTelemetry traces/metrics (ASP.NET Core, HttpClient, Npgsql, runtime) → OTLP → local backend (Aspire Dashboard in Phase 1; `grafana/otel-lgtm` from the hardening track, D-78) | 1 | P0 | done |
-| BL-122 | Project `ActivitySource`/`Meter`; spans for use cases, provider calls, outbox, consumers | 5–11 | P0 | partial (`FulfillmentHub` meter ✔; `Provider *` spans ✔ Phases 5/6; outbox ✔ Phase 8; queue consumers ✔ Phase 9; use-case spans → Phase 11) |
+| BL-122 | Project `ActivitySource`/`Meter`; spans for use cases, provider calls, outbox, consumers | 5–11 | P0 | done (2026-09-21: use-case spans `PlaceOrder`/`CancelOrder`/`CreatePayment`/`RequestDelivery`/`ApplyPaymentWebhook`/`ApplyDeliveryWebhook` + `Webhook.Ingest`; provider/outbox/queue spans since Phases 5–9) |
 | BL-246 | Dedicated provider retry/circuit metrics (`fh.provider.retry.count`, `fh.provider.circuit.state`) — today only the standard `HttpClient` instrumentation | 11 | P2 | todo |
-| BL-123 | Business/operations metrics (OBSERVABILITY.md table) | 11 | P0 | todo |
+| BL-123 | Business/operations metrics (OBSERVABILITY.md table) | 11 | P0 | done (2026-09-21: `fh.order.time_to_final`, `fh.idempotency.hits`, `fh.webhooks.processing.duration` added; the table has no open row left except BL-246 P2) |
 | BL-124 | AWS SDK (SQS) instrumentation | 9 | P1 | done (`OpenTelemetry.Instrumentation.AWS`) |
 | BL-125 | Incident runbook executed locally with evidence (`docs/incidents/`) | 11 | P0 | done (2026-09-21, hardening track) |
 | BL-126 | CloudWatch alarms re-expressing the local rules (BL-129) + DLQ > 0 | 16 | P0 | todo |
 | BL-128 | Local metrics/alerting backend `grafana/otel-lgtm` in compose (D-78), provisioned datasources + one dashboard, Aspire Dashboard as opt-in profile | 11 | P0 | done (2026-09-21, hardening track) |
 | BL-129 | Five provisioned alert rules (D-79): `ApiHigh5xxRate`, `ApiHighLatencyP95`, `WorkerHeartbeatMissing`, `OutboxBacklog`, `QueueDlqNotEmpty`; catalog with signal/threshold/window/reason/impact/cause/action | 11 | P0 | done (2026-09-21, hardening track) |
 | BL-130 | Reproducible fault scenarios with existing knobs (D-80): slow/failing provider, database outage, stopped worker; `scripts/` helpers + docs | 11 | P0 | done (2026-09-21, hardening track) |
-| BL-127 | Test: one order = one end-to-end `trace_id` | 11 | P1 | todo |
+| BL-127 | Test: one order = one end-to-end `trace_id` | 11 | P1 | done (2026-09-21: `TraceContinuityTests` — request → PlaceOrder → outbox consumer span → CreatePayment → provider call → simulator server span share one trace id; test hosts now propagate W3C context across the in-process HTTP hops) |
 
 ## Tests
 
@@ -138,7 +138,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-149 | Authorization tests: 401/403 per role (Phase 3) and cross-resource access (Phase 4) | 3/4 | P0 | done |
 | BL-150 | Convergence with `SIM_FAILURE_RATE=0.3` | 12 | P1 | todo |
 | BL-151 | Stryker (mutation) on Domain | 12 | P3 | todo |
-| BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying. **2026-09-21**: first CI run hit a third shape — `WaitForOrderStatusAsync` compared the status for equality and missed the transient `Paid` (order already `Delivered`); the poller now accepts any later happy-path status | 12 | P1 | doing (poller fixed; helper races still open) |
+| BL-152 | Integration suite is intermittent: on 2026-09-18 a full run had 4 failures on a cold Docker start (`PaymentFlowTests` among them) and another had 2 (`OrderAccessAndCancelTests`: a test helper writing the order while the in-process outbox publisher updates it → `DbUpdateConcurrencyException`/500); each time the following run was 225/225. Investigate the test-side races (pause the publisher in those helpers, container start timing) instead of retrying. **2026-09-21**: first CI run hit a third shape — `WaitForOrderStatusAsync` compared the status for equality and missed the transient `Paid` (order already `Delivered`); the poller now accepts any later happy-path status. `DriveToInDeliveryAsync` now pauses the in-process publisher while it writes the order (the `xmin` race) | 12 | P1 | done (2026-09-21 — reopen with the exact test and log if a new shape appears) |
 
 ## DevOps
 
@@ -152,7 +152,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-166 | `ci.yml`: restore, build Release, format check, vulnerable-package gate, unit/architecture/integration tests (Testcontainers), test results artifact (D-81) | 14 | P0 | done (2026-09-21, first GitHub run green) |
 | BL-167 | `codeql.yml`: CodeQL C# (SAST) on push/PR/schedule, results in the Security tab; findings triage procedure and limitations documented | 14 | P0 | done (2026-09-21, first GitHub run green) |
 | BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | done (2026-09-21, first GitHub run green) |
-| BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | todo |
+| BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | done (2026-09-21: 9 `packages.lock.json` committed; `ci.yml`/`codeql.yml` restore in locked mode — first CI run pending push) |
 | BL-165 | `scripts/` (migrate, seed, run-e2e) | 12 | P1 | todo |
 
 ## AWS

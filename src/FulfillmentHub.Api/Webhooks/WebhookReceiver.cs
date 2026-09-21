@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using FulfillmentHub.Api.Middleware;
+using FulfillmentHub.Application.Common;
 using FulfillmentHub.Application.Messaging;
 using FulfillmentHub.Application.Webhooks;
 using FulfillmentHub.Infrastructure.Webhooks;
@@ -37,6 +38,8 @@ public sealed partial class WebhookReceiver(
         IWebhookProcessor providerProcessor,
         CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("Webhook.Ingest");
+        activity?.SetTag("webhook.provider", source.Provider);
         var request = httpContext.Request;
 
         if (request.ContentLength > MaxBodyBytes)
@@ -76,6 +79,9 @@ public sealed partial class WebhookReceiver(
 
         var correlationId = httpContext.Response.Headers[CorrelationIdMiddleware.HeaderName].FirstOrDefault();
         var recorded = await inbox.TryRecordAsync(source.Provider, identity.EventId, identity.EventType, payload, correlationId, cancellationToken);
+
+        activity?.SetTag("webhook.event.type", identity.EventType);
+        activity?.SetTag("webhook.duplicate", recorded is null);
 
         if (recorded is null)
         {

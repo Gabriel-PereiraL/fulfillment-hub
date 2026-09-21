@@ -42,6 +42,6 @@ public sealed class ProviderSimulatorFactory(Func<TestServer> apiServer) : WebAp
             }));
         builder.ConfigureTestServices(services =>
             services.AddHttpClient(WebhookDispatcher.HttpClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => apiServer().CreateHandler()));
+                .ConfigurePrimaryHttpMessageHandler(() => new TracePropagationHandler { InnerHandler = apiServer().CreateHandler() }));
     }
 }

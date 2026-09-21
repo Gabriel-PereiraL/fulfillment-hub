@@ -27,6 +27,8 @@ public sealed partial class ApplyPaymentWebhookHandler(
 {
     public async Task<Result<bool>> HandleAsync(PaymentWebhookCommand command, CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("ApplyPaymentWebhook");
+
         var payment = await db.Payments
             .SingleOrDefaultAsync(p => p.Provider == gateway.ProviderName && p.ProviderPaymentId == command.ProviderPaymentId, cancellationToken);
 

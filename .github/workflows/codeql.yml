@@ -52,8 +52,8 @@ jobs:
           # security-extended = default security queries + lower-precision/lower-severity security queries.
           queries: security-extended
 
-      - name: Restore
-        run: dotnet restore FulfillmentHub.slnx
+      - name: Restore (locked mode — packages.lock.json must match, BL-169)
+        run: dotnet restore FulfillmentHub.slnx --locked-mode
 
       - name: Build under the CodeQL tracer
         # An explicit build (instead of autobuild / build-mode none) so the extractor sees exactly the compilation

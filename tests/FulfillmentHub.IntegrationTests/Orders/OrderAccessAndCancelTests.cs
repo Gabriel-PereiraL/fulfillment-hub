@@ -132,6 +132,8 @@ public sealed class OrderAccessAndCancelTests(ApiFixture api)
     /// <summary>Simulates pickup (Phase 6 drives this through the delivery provider). Payment is driven by the simulator.</summary>
     private async Task DriveToInDeliveryAsync(Guid orderId)
     {
+        // The in-process publisher must not touch the order while this helper writes it (BL-152: xmin race → 500).
+        using var pause = api.Outbox.Pause();
         using var scope = api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FulfillmentHubDbContext>();
         var id = OrderId.From(orderId);

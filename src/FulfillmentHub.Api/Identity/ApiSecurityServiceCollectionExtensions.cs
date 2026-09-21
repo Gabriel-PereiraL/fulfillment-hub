@@ -20,6 +20,7 @@ public static class ApiSecurityServiceCollectionExtensions
         services.AddFulfillmentHubAuthorization();
 
         services.AddHttpContextAccessor();
+        services.AddSingleton<Idempotency.IdempotencyMetrics>();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
         services.AddOptions<RateLimitOptions>()

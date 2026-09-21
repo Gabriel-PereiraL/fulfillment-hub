@@ -53,7 +53,9 @@ public sealed class OutboxInterceptor(TimeProvider timeProvider) : SaveChangesIn
         }
 
         var now = timeProvider.GetUtcNow();
-        var correlationId = Activity.Current?.GetTagItem("correlation.id") as string;
+        // The correlation id is tagged on the request span; SaveChanges may run under a child span (use-case span,
+        // BL-122), so walk up to the nearest ancestor that carries it.
+        var correlationId = FindTag(Activity.Current, "correlation.id");
         var traceParent = Activity.Current?.Id;
 
         foreach (var entry in aggregates)
@@ -96,4 +98,17 @@ public sealed class OutboxInterceptor(TimeProvider timeProvider) : SaveChangesIn
         Guid guid => guid,
         _ => id.GetType().GetProperty("Value")?.GetValue(id) is Guid inner ? inner : Guid.Empty,
     };
+
+    private static string? FindTag(Activity? activity, string key)
+    {
+        for (; activity is not null; activity = activity.Parent)
+        {
+            if (activity.GetTagItem(key) is string value)
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
 }

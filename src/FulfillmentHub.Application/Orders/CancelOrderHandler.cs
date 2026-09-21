@@ -28,7 +28,36 @@ public sealed partial class CancelOrderHandler(
 {
     private static readonly Failure NotFound = Failure.NotFound("order.not_found", "Order not found.");
 
+    private const int MaxAttempts = 2;
+
     public async Task<Result<OrderDto>> HandleAsync(CancelOrderCommand command, CancellationToken cancellationToken)
+    {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("CancelOrder");
+        activity?.SetTag("order.id", command.OrderId);
+
+        // The Worker may move the same order (payment settled, delivery requested) while the customer cancels it. The
+        // `xmin` token then rejects the write; reloading and re-applying the rules is correct because every path below
+        // is idempotent (the provider answers "already cancelled" for a repeated cancel). After the last attempt the
+        // caller gets a 409 and may retry, never a 500.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await CancelAsync(command, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < MaxAttempts)
+            {
+                LogConcurrentUpdateRetry(command.OrderId, attempt);
+                db.ChangeTracker.Clear();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Failure.Conflict("order.concurrent_update", "The order changed while it was being cancelled. Please try again.");
+            }
+        }
+    }
+
+    private async Task<Result<OrderDto>> CancelAsync(CancelOrderCommand command, CancellationToken cancellationToken)
     {
         var orderId = OrderId.From(command.OrderId);
         var order = await db.Orders.SingleOrDefaultAsync(o => o.Id == orderId, cancellationToken);
@@ -80,6 +109,7 @@ public sealed partial class CancelOrderHandler(
         }
 
         order.Cancel(reason, now, currentUser.UserId, command.Note);
+        metrics.OrderReachedFinalStatus(order, now);
 
         await StockRelease.ReleaseAsync(db, order, now, cancellationToken);
 
@@ -90,6 +120,9 @@ public sealed partial class CancelOrderHandler(
 
         return Result.Ok(OrderDto.From(order));
     }
+
+    [LoggerMessage(EventId = 4012, Level = LogLevel.Warning, Message = "Order {OrderId} changed concurrently while being cancelled; retrying (attempt {Attempt})")]
+    private partial void LogConcurrentUpdateRetry(Guid orderId, int attempt);
 
     [LoggerMessage(EventId = 4010, Level = LogLevel.Information, Message = "Order {OrderId} cancelled ({Reason})")]
     private partial void LogOrderCancelled(OrderId orderId, OrderCancellationReason reason);

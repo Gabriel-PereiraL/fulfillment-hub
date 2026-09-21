@@ -25,6 +25,9 @@ public sealed partial class CreatePaymentForOrderHandler(
 {
     public async Task<Result<PaymentId>> HandleAsync(CreatePaymentForOrderCommand command, CancellationToken cancellationToken)
     {
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity("CreatePayment");
+        activity?.SetTag("order.id", command.OrderId);
+
         var orderId = OrderId.From(command.OrderId);
         var order = await db.Orders.SingleOrDefaultAsync(o => o.Id == orderId, cancellationToken);
 
