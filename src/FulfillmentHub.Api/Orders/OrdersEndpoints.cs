@@ -9,12 +9,15 @@ namespace FulfillmentHub.Api.Orders;
 
 public static class OrdersEndpoints
 {
+    public const string PlaceOrderRateLimitPolicy = "place-order";
+
     public static IEndpointRouteBuilder MapOrdersEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/orders").WithTags("Orders");
 
         group.MapPost("/", PlaceOrderAsync)
             .RequireAuthorization(AuthorizationPolicies.CustomerOnly)
+            .RequireRateLimiting(PlaceOrderRateLimitPolicy)
             .AddEndpointFilter<IdempotencyFilter<PlaceOrderRequest, OrderDto>>()
             .WithName("PlaceOrder")
             .WithSummary("Places an order for the authenticated customer. Requires an Idempotency-Key header.")
@@ -26,7 +29,8 @@ public static class OrdersEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
         group.MapGet("/{id:guid}", GetByIdAsync)
             .WithName("GetOrder")

@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using FulfillmentHub.Application.Identity;
+using FulfillmentHub.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -10,7 +11,7 @@ public static class ApiSecurityServiceCollectionExtensions
 {
     /// <summary>
     /// Bearer authentication (validated with the issuing options), deny-by-default authorization with role policies,
-    /// the request-scoped <see cref="ICurrentUser"/> and the login rate limiter.
+    /// the request-scoped <see cref="ICurrentUser"/> and the rate limiters (login, webhooks, order creation).
     /// </summary>
     public static IServiceCollection AddFulfillmentHubApiSecurity(this IServiceCollection services)
     {
@@ -49,6 +50,21 @@ public static class ApiSecurityServiceCollectionExtensions
                     {
                         PermitLimit = limits.Value.LoginPerMinute,
                         Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }));
+
+            // Order creation (D-84): a sliding window per authenticated user, so one account cannot exhaust stock
+            // reservations or delivery quotes; the client IP is the fallback for callers that are not authenticated.
+            options.AddPolicy(Orders.OrdersEndpoints.PlaceOrderRateLimitPolicy, httpContext =>
+                RateLimitPartition.GetSlidingWindowLimiter(
+                    partitionKey: httpContext.User.FindFirst(JwtClaimNames.Subject)?.Value is { Length: > 0 } subject
+                        ? "user:" + subject
+                        : "ip:" + (httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                    factory: _ => new SlidingWindowRateLimiterOptions
+                    {
+                        PermitLimit = limits.Value.OrdersPerMinute,
+                        Window = TimeSpan.FromMinutes(1),
+                        SegmentsPerWindow = 6,
                         QueueLimit = 0,
                     }));
         });

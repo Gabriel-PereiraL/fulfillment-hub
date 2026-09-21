@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace FulfillmentHub.Api.Identity;
 
-/// <summary>Per-client-IP fixed-window budgets (section <c>RateLimiting</c>).</summary>
+/// <summary>Rate-limit budgets (section <c>RateLimiting</c>): per client IP for anonymous endpoints, per user for order creation.</summary>
 public sealed class RateLimitOptions
 {
     public const string SectionName = "RateLimiting";
@@ -17,4 +17,11 @@ public sealed class RateLimitOptions
     /// </summary>
     [Range(1, 100_000)]
     public int WebhooksPerMinute { get; init; } = 1200;
+
+    /// <summary>
+    /// <c>POST /orders</c> per minute per authenticated user (sliding window, D-84). Bounds the cost one account can
+    /// impose on stock reservations and delivery quotes; far above legitimate use.
+    /// </summary>
+    [Range(1, 10_000)]
+    public int OrdersPerMinute { get; init; } = 60;
 }

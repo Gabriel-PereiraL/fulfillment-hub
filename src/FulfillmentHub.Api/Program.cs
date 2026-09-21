@@ -65,11 +65,21 @@ if (args is ["seed"])
     return;
 }
 
+// Security headers first so every response — including 401/404 produced by the pipeline itself — carries them (D-82).
+app.UseMiddleware<SecurityHeadersMiddleware>();
+if (!app.Environment.IsDevelopment())
+{
+    // Only effective on requests seen as HTTPS; behind the load balancer that needs ForwardedHeaders (BL-113, Phase 16).
+    app.UseHsts();
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseRateLimiter();
 app.UseAuthentication();
+// After authentication so the order-creation limiter can partition by user (D-84); before authorization so
+// rejected requests are shed before policies run.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
