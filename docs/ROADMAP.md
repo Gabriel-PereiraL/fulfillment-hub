@@ -36,8 +36,8 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 ## Hardening track (cross-phase, started 2026-09-21) — D-77
 
 A bounded slice of Phases 10, 11 and 14 executed as one track, in this order, without changing business behaviour
-or public API contracts. Each item stays attached to its own phase in the BACKLOG; the phases remain open for what
-the track does not cover.
+or public API contracts. Each item stayed attached to its own phase in the BACKLOG; while the track ran, the phases
+stayed open for what it did not cover (all of that has since been closed — see the track status below).
 
 | Order | Phase | Scope in this track | Out of the track (stays in the phase) |
 |---|---|---|---|
@@ -45,7 +45,7 @@ the track does not cover.
 | 2 | 11 — Observability | BL-128 (`grafana/otel-lgtm` backend + provisioning), BL-129 (four alert rules), BL-130 (fault scenarios), BL-125 (one runbook executed with evidence) | BL-122 use-case spans, BL-123 remaining metrics (`fh.idempotency.hits`, `fh.order.time_to_final`), BL-127 trace-id test, BL-246 |
 | 3 | 14 — CI | BL-166 (`ci.yml`), BL-167 (`codeql.yml` — SAST), BL-168 (dependency review, gitleaks), BL-109 (vulnerable-package gate) | BL-164 image build/Trivy/ECR (needs Phase 13 images) |
 
-**Track status (2026-09-21)**: order 1 (Phase 10) **done**; order 2 (Phase 11 alerting subset) **done** — five rules provisioned, four provoked and observed firing/resolving (`docs/incidents/2026-09-21-slow-provider-drill.md`); order 3 (Phase 14 CI/SAST subset) **done** — first GitHub runs on 2026-09-21: CodeQL green (1 finding triaged), CI green after a test-poller timing fix (DEPLOYMENT.md §4.1). Phases 11 and 14 remain `in-progress` for their remaining items.
+**Track status (2026-09-21)**: order 1 (Phase 10) **done**; order 2 (Phase 11 alerting subset) **done** — five rules provisioned, four provoked and observed firing/resolving (`docs/incidents/2026-09-21-slow-provider-drill.md`); order 3 (Phase 14 CI/SAST subset) **done** — first GitHub runs on 2026-09-21: CodeQL green (1 finding triaged), CI green after a test-poller timing fix (DEPLOYMENT.md §4.1). The items left outside the track were closed the same day: Phase 11 (BL-122 use-case spans, BL-123 remaining metrics, BL-127 trace-continuity test; BL-246 stays open as P2, which does not block the gate) and Phase 14 (BL-164 image build + Trivy + E2E in the `images` job, BL-169 locked restore) — remote gate CI run 35623513605 and CodeQL run 35623513653, both green (DEPLOYMENT.md §4.1). **Phases 10, 11 and 14 are all `done`**; the summary table above is the source of truth.
 
 **Invariants of the track**: no AWS resources; no new business rules; no fault injection inside the API (D-80); no
 push without the owner's authorization (the CodeQL run on GitHub is the only step that needs it); the existing
@@ -61,7 +61,7 @@ test suite is not reduced; documentation uses `Implemented` / `Partial` / `Plann
 - *CI duration*: the integration suite pulls PostgreSQL and LocalStack images on every run (~5–10 min); acceptable
   for a portfolio repository; caching is a later optimisation.
 - *CodeQL on .NET 10*: an explicit `dotnet build` step is used instead of autobuild/`build-mode: none` to avoid SDK
-  detection issues; the first real run happens only after the owner pushes.
+  detection issues; the first real run happened only after the owner pushed (2026-09-21, run 35605030657 — green).
 
 **Files expected to change**: `src/FulfillmentHub.Api/{Program.cs, Middleware/SecurityHeadersMiddleware.cs,
 Identity/ApiSecurityServiceCollectionExtensions.cs, Identity/RateLimitOptions.cs, Orders/OrdersEndpoints.cs,
@@ -172,8 +172,8 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 ## Phase 14 — CI (GitHub Actions) — `done` (2026-09-21)
 **Goal**: restore/build/analyzers/unit/integration (Testcontainers)/security scan (CodeQL, dependency review, gitleaks, Trivy)/image build/artifact pipeline.
 **Precondition**: public repository in place (done since Phase 9); pre-publication review (DEPLOYMENT.md §8) executed.
-**Gate 14**: green pipeline on PRs; badges in the README; no secrets in workflows.
-**Result**: `ci.yml` (restore in locked mode, build with analyzers, format, vulnerable-package gate, 245 tests with Testcontainers, dependency review, gitleaks, and — since Phase 13 — image build, size gate, Trivy and the black-box E2E against the containers) + `codeql.yml` (SAST); badges in the README; no repository secrets (the images job writes throwaway values to `.env` on the runner). Remote gate closed on 2026-09-21: CI run 35623513605 (all jobs incl. `images`) and CodeQL run 35623513653 green (DEPLOYMENT.md §4.1). ECR push → Phase 16 (BL-170).
+**Gate 14**: green pipeline on pushes to `main` and on PRs; badges in the README; no secrets in workflows.
+**Result**: `ci.yml` (restore in locked mode, build with analyzers, format, vulnerable-package gate, 245 tests with Testcontainers, dependency review, gitleaks, and — since Phase 13 — image build, size gate, Trivy and the black-box E2E against the containers) + `codeql.yml` (SAST); badges in the README; no repository secrets (the images job writes throwaway values to `.env` on the runner). Remote gate closed on 2026-09-21: CI run 35623513605 (all jobs incl. `images`) and CodeQL run 35623513653 green (DEPLOYMENT.md §4.1). Every action is pinned to a full commit SHA and the Trivy image to a digest (SECURITY.md §6.5). Honest caveat: no pull request has been opened yet, so the PR-only `dependency-review` job has never executed (it is `skipped` on pushes). ECR push → Phase 16 (BL-170).
 
 ## Phase 15 — AWS IaC (Terraform) — requires an account and a cost decision
 **Goal**: Terraform modules: VPC, subnets, SG, ECR, ECS/Fargate, ALB, RDS PostgreSQL, SQS+DLQ, least-privilege IAM, Secrets Manager, CloudWatch; reviewed `plan`; budget alarm.

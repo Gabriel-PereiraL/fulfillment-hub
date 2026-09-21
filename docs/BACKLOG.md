@@ -155,6 +155,8 @@ Status: `todo` · `doing` · `done` · `dropped`. Stable IDs (`BL-xxx`) for refe
 | BL-168 | Dependency review (PRs) + gitleaks jobs | 14 | P1 | done (2026-09-21, first GitHub run green) |
 | BL-169 | NuGet lock file (`RestorePackagesWithLockFile` + `--locked-mode` in CI) | 14 | P2 | done (2026-09-21: 9 `packages.lock.json` committed; `ci.yml`/`codeql.yml` restore in locked mode; green on Linux in run 35623513605) |
 | BL-165 | `scripts/` (run-e2e, place-orders, alerts-status; migrate/seed stay the two documented `dotnet` commands) | 12 | P1 | done (2026-09-21) |
+| BL-249 | Supply chain follow-ups: Dependabot for `github-actions` (keeps the SHA pins in `ci.yml`/`codeql.yml` current, SECURITY.md §6.5); digest pins for the `mcr.microsoft.com/dotnet/*:10.0-alpine` base images in `docker/Dockerfile.*` | 19 | P3 | todo |
+| BL-250 | Rename the GitHub repository `fullfillmentHub` → `fulfillment-hub` (spelling) — **owner action on GitHub**, then update the 15 URL occurrences (README ×6: two badges + evidence table; DEPLOYMENT.md ×7: publication note + run links; SECURITY.md ×2: run links) and `git remote set-url` locally; GitHub redirects the old name, so nothing breaks in between. Code, namespaces and image names already spell `FulfillmentHub`/`fulfillmenthub` correctly and stay as they are | 19 | P1 | todo (needs explicit authorization — remote, user-visible change) |
 
 ## AWS
 

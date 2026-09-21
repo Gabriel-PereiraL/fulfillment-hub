@@ -25,7 +25,7 @@ FulfillmentHub.slnx
 ├── Directory.Build.props            # Nullable, ImplicitUsings, TreatWarningsAsErrors, analyzers, LangVersion
 ├── Directory.Packages.props         # Central Package Management
 ├── .editorconfig
-├── docker-compose.yml               # postgres, localstack (SQS), aspire-dashboard (OTLP)
+├── docker-compose.yml               # profiles: deps (postgres, localstack, otel-lgtm), app (migrate, seed, simulator, api, worker), aspire (opt-in)
 ├── src/
 │   ├── FulfillmentHub.Domain/           # entities, value objects, domain events, domain exceptions. No framework packages.
 │   ├── FulfillmentHub.Application/      # use cases, DTOs, ports (interfaces to the outside), IFulfillmentHubDbContext, Result
@@ -163,7 +163,7 @@ Communication **between modules** inside the monolith:
 ### 5.6 Observability (OBSERVABILITY.md)
 - OpenTelemetry: traces (ASP.NET Core, HttpClient, Npgsql, AWS SDK, own spans), metrics (runtime, ASP.NET, own: outbox
   lag, retries, webhook failures, provider latency), logs correlated by `trace_id`.
-- Locally: Aspire Dashboard (container) receiving OTLP. AWS: ADOT collector sidecar → CloudWatch (logs/metrics) and X-Ray (traces).
+- Locally: `grafana/otel-lgtm` (one container: OTel Collector, Prometheus, Tempo, Loki, Grafana with a provisioned dashboard and alert rules — D-78; the Aspire Dashboard remains an opt-in profile) receiving OTLP. AWS (Phase 16): ADOT collector sidecar → CloudWatch (logs/metrics) and X-Ray (traces).
 
 ## 6. Critical flows (sequences)
 

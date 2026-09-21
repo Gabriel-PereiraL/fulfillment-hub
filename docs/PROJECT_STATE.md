@@ -18,7 +18,8 @@ Last update: 2026-09-21.
   hosts and the containers).
 - Build: 0 warnings (`TreatWarningsAsErrors`); `dotnet format` clean; 0 vulnerable packages
   (`dotnet list package --vulnerable --include-transitive`, locked restore); images 168–209 MB with Trivy 0 HIGH/CRITICAL;
-  workflows linted with `actionlint`.
+  workflows linted with `actionlint`, every action pinned to a full commit SHA and the Trivy image to a digest
+  (SECURITY.md §6.5).
 - Remote gate of Phases 11–14 closed on 2026-09-21: CI run 35623513605 (locked restore, 245 tests, images 144/117/130 MB on
   the runner, Trivy 0 HIGH/CRITICAL, E2E 3/3 against the containers, clean teardown) and CodeQL run 35623513653 green.
 

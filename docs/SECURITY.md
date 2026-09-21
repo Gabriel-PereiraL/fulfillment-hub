@@ -5,7 +5,8 @@ tests, and every item carries one of four statuses — **Implemented** (exists, 
 control exists; the missing part is named), **Planned** (phase given), **Accepted risk** (consciously not mitigated,
 with the reason). Nothing here claims "implemented" before it exists.
 
-Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed).
+Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed); consistency pass on the same day after
+Phases 11–14 closed (Trivy, containers and lock files moved from `Planned` to `Implemented`; §6.5 added).
 
 ## 1. Threat model
 
@@ -64,9 +65,9 @@ Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed).
 | T8 | SSRF | T | the system never calls a user-supplied URL; provider base URLs are validated `Options` (`ValidateOnStart`); the simulator's webhook target is simulator configuration | **Implemented (by design)** | `PaymentProviderOptions`, `DeliveryProviderOptions`; no endpoint accepts a URL (OpenAPI document) |
 | T9 | PII or secrets in logs | I | `LoggerMessage` catalog uses ids and enum reasons only; webhook body/signature/key never logged; EF sensitive data logging off; guard test scans every `[LoggerMessage]` for e-mail/phone/password/token/key/body placeholders | **Implemented** | `LogMessagePrivacyTests.LoggerMessages_DoNotCarryPersonalDataOrSecrets` (architecture tests); D-85 |
 | T10 | Secrets in the repository / CI | I | empty values in `appsettings*`, user-secrets locally, `.env` ignored, `ValidateOnStart` refuses empty keys; gitleaks in CI; history audited on 2026-09-18 (nothing real) | **Implemented** (gitleaks ran green on 2026-09-21) | `.gitignore`, `JwtOptions`/provider options; `.github/workflows/ci.yml` job `secrets` |
-| T11 | Vulnerable dependency | supply chain | CPM with pinned versions; `dotnet list package --vulnerable --include-transitive` as a CI gate; GitHub dependency review on PRs; CodeQL | **Implemented** (gate ran green on 2026-09-21) · Trivy for images: **Planned** (Phase 13/14) | `Directory.Packages.props`; `ci.yml` step `Vulnerable packages`; `codeql.yml` |
+| T11 | Vulnerable dependency | supply chain | CPM with pinned versions; `dotnet list package --vulnerable --include-transitive` as a CI gate; GitHub dependency review on PRs; CodeQL | **Implemented** (package gate green on 2026-09-21; Trivy 0 HIGH/CRITICAL on the three images in CI run 35623513605) | `Directory.Packages.props`; `ci.yml` steps `Vulnerable packages` and `Trivy` (job `images`); `codeql.yml`; DEPLOYMENT.md §2 |
 | T12 | Response-level attacks (MIME sniffing, clickjacking of an HTML error page, referrer leaks, cached tokens) | I/T | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, CSP `default-src 'none'`, `Cache-Control: no-store` on `/api`, HSTS outside Development | **Implemented** · HSTS effective only once TLS/ForwardedHeaders exist (BL-113) | `SecurityHeadersMiddleware`; `SecurityHeadersTests` (4 tests) |
-| T13 | Cross-origin browser abuse (CSRF-like calls from another origin) | S | **no CORS policy**: browsers enforce same-origin by default; bearer tokens are not sent automatically like cookies | **Implemented (by absence — D-82)** | `Program.cs` has no `AddCors`/`UseCors`; revisit in Phase 17 if a browser client on another origin appears |
+| T13 | Cross-origin browser abuse (CSRF-like calls from another origin) | S | **no CORS policy is registered**, so the API never emits `Access-Control-Allow-*` headers. CORS only governs what a *browser* lets a page on another origin do: read a response, or send a request with a custom header such as `Authorization` (which needs a preflight the API will not approve). It does not stop the request from being sent, and non-browser clients ignore it entirely. Authentication is a bearer token the client itself must place in `Authorization` — browsers never attach it automatically the way they attach cookies — so a page on a foreign origin cannot make an authenticated call without already holding the token, and even then the preflight fails. Classic CSRF therefore has no vector; the residual risk is the token itself (T4/R1). Not enabling CORS was a decision on the real exposure (no browser client on another origin), not a checklist default | **Implemented (by absence — D-82)** | `Program.cs` has no `AddCors`/`UseCors`; if a browser client on another origin appears (the Phase 17 Admin is server-rendered), enable it with an explicit origin allow-list, never `AllowAnyOrigin` |
 | T14 | Destructive automatic migrations | T/A | never `Database.Migrate()` at startup; migrations applied by an explicit command / one-off task | **Implemented** (local) · production procedure **Planned** (Phase 16) | `Program.cs` (no `Migrate()`); `DEVELOPMENT.md` §2 |
 | T15 | Network exposure of database / queue | I | private subnets, security groups, least-privilege IAM | **Planned** (Phase 15) | `AWS_ARCHITECTURE.md` |
 | T16 | Forged delivery event (leaked delivery key) | S/T | signature + aggregate ordering rules (never regresses status) + periodic reconciliation; **not** re-verified with a `GET` | **Accepted risk** (D-59): no money involved, worst case an early status advance corrected by reconciliation | `Delivery.ApplyProviderEvent`, `ReconcileDeliveriesHandler` |
@@ -84,7 +85,7 @@ Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed).
 | PII redaction in logs | **Implement as guard test** → T9 (D-85) | nothing to redact if the field never reaches the logger |
 | SSRF | **Document (by design)** → T8 | no user-supplied URL exists |
 | SAST / CodeQL, dependency review, gitleaks | **Implement** → §6 | real SAST, automatic in CI |
-| Trivy on images | **Defer to Phase 13/14** | there are no images yet |
+| Trivy on images | **Defer to Phase 13/14** → done the same day (T11): scanned locally at Gate 13 and in every CI run since | there were no images yet when the track started |
 | Progressive per-account lockout | **Accept risk** (R2) | distributed 5/min/IP is bounded; lockout adds a DoS vector against legitimate users |
 | Refresh / revocation of tokens | **Accept risk** (R1) | 15-min window; revocation list only if a real need appears (BL-033, P2) |
 | HMAC key rotation per provider | **Accept risk** (R3) | single key per provider, rotation is a manual redeploy today |
@@ -99,7 +100,7 @@ Last full review: 2026-09-21 (hardening track, D-77/D-87 — Phase 10 closed).
 | R3 | One HMAC key per provider, rotated only by redeploy | simulated providers; rotation without downtime needs dual-key acceptance | a real provider contract |
 | R4 | Delivery webhooks are not re-verified with the provider (T16) | no financial effect; reconciliation corrects | provider events start carrying financial data |
 | R5 | Rate limiting keys on `RemoteIpAddress`; behind the ALB every client shares one IP until `ForwardedHeaders` is configured | no load balancer exists yet | Phase 16 deployment (BL-113 is P0 there) |
-| R6 | The Kestrel body limit is not covered by an automated test (the in-memory test server bypasses Kestrel) | verified manually (§1.7); the webhook limit *is* tested | an E2E suite against real containers (Phase 12) |
+| R6 | The Kestrel body limit is not covered by an automated test (the in-memory test server bypasses Kestrel) | verified manually (§1.7); the webhook limit *is* tested | the black-box E2E suite (Phase 12) runs against real Kestrel hosts but does not yet include a 413 case — adding one closes R6 |
 | R7 | CodeQL findings are triaged by one person; no second reviewer | solo project | a second maintainer |
 
 ### 1.7 Known limitations and manual evidence
@@ -164,10 +165,10 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 | A02 | Cryptographic Failures | **Partial** | PBKDF2-HMAC-SHA512 ✔; JWT key ≥ 32 bytes validated at startup ✔; `ValidAlgorithms=[HS256]` ✔; HMAC-SHA256 constant-time ✔; `no-store` on API responses ✔; HSTS registered ✔ — **gap**: TLS itself is the load balancer's job (Phase 16) |
 | A03 | Injection | **Implemented** | EF Core parameterised; only `FromSqlInterpolated`; no `*Raw(`; native request validation; CodeQL `security-extended` includes injection queries (§6) |
 | A04 | Insecure Design | **Implemented** | threat model (§1) with trust boundaries and residual risks; idempotency per user (ADR-010); limits (1–50 items, 1–99 units, 64 KB / 256 KB bodies, rate limits); reconciliation jobs; outbox at-least-once with idempotent consumers |
-| A05 | Security Misconfiguration | **Partial** | security headers ✔ (`SecurityHeadersTests`); no stack traces outside Development (ProblemDetails) ✔; OpenAPI/Scalar only in Development ✔; CORS not enabled by decision ✔; `AllowedHosts` — **gap**: non-root containers (Phase 13); `ForwardedHeaders` (Phase 16) |
-| A06 | Vulnerable and Outdated Components | **Implemented** (CI executed 2026-09-21) | CPM pinned versions; `dotnet list package --vulnerable --include-transitive` gate in `ci.yml`; dependency review on PRs; .NET 10 LTS — image scanning **Planned** (Phase 13) |
+| A05 | Security Misconfiguration | **Partial** | security headers ✔ (`SecurityHeadersTests`); no stack traces outside Development (ProblemDetails) ✔; OpenAPI/Scalar only in Development ✔; CORS not enabled by decision ✔; non-root containers ✔ (`USER app`, Phase 13) — **gap**: `AllowedHosts` and `ForwardedHeaders` are only meaningful behind the load balancer (Phase 16, BL-113) |
+| A06 | Vulnerable and Outdated Components | **Implemented** (CI executed 2026-09-21) | CPM pinned versions; `dotnet list package --vulnerable --include-transitive` gate in `ci.yml`; dependency review on PRs; .NET 10 LTS; image scanning with Trivy (HIGH/CRITICAL, `--ignore-unfixed`) on every CI run — 0 findings on 2026-09-21 |
 | A07 | Identification and Authentication Failures | **Implemented** · R1/R2 accepted | 5/min per IP; identical 401 + decoy hash; 15-min expiry; `AuthEndpointsTests` |
-| A08 | Software and Data Integrity Failures | **Partial** | webhooks signed + verified with the provider ✔; outbox in the same transaction ✔ (`OutboxTests`); CI with least-privilege `permissions:` and pinned major versions ✔ — **gap**: NuGet lock file / `--locked-mode` (BL-169, P2), signed images (Phase 13) |
+| A08 | Software and Data Integrity Failures | **Partial** | webhooks signed + verified with the provider ✔; outbox in the same transaction ✔ (`OutboxTests`); NuGet lock files + `--locked-mode` restore ✔ (BL-169); CI with least-privilege `permissions:`, every action pinned to a full commit SHA and the Trivy image pinned by digest ✔ (§6.5) — **gap**: images are not signed / no provenance attestation (revisit with the ECR push, Phase 16) |
 | A09 | Security Logging and Monitoring Failures | **Partial** | structured auth events 3000/3001 ✔; rejected webhooks 5200 + `fh.webhooks.rejected{reason}` ✔; PII guard test ✔; **alerts** on 5xx / latency / worker heartbeat / outbox backlog ✔ (OBSERVABILITY.md §6) — **gap**: alert on login failures and rejected webhooks documented but not provisioned (D-79) |
 | A10 | Server-Side Request Forgery | **Implemented (by design)** | no user-supplied URL is ever fetched; provider URLs are validated configuration (T8) |
 
@@ -184,9 +185,9 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 | Compiler analyzers (not SAST) | .NET analyzers `latest-recommended` incl. `CA3xxx`/`CA5xxx`, EF analyzers, `TreatWarningsAsErrors` | every build, `ci.yml` | **Implemented** |
 | **SAST** | **GitHub CodeQL** (C#, `security-extended` suite) | `.github/workflows/codeql.yml` — push to `main`, pull requests, weekly schedule; results in *Security → Code scanning* | **Implemented and executed** — first run 2026-09-21 ([run 35605030657](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35605030657), 2 min 58 s, 63 rules, **1 finding**, triaged — see §6.4) |
 | Vulnerable packages | `dotnet list package --vulnerable --include-transitive` (fails the job on any hit) | `ci.yml` | **Implemented and executed** (0 advisories on 2026-09-21) |
-| Dependency review | `actions/dependency-review-action` (fails PRs that add known-vulnerable packages) | `ci.yml`, pull requests only | **Implemented** |
+| Dependency review | `actions/dependency-review-action` (fails PRs that add known-vulnerable packages) | `ci.yml`, pull requests only | **Implemented** — not exercised yet: the job only runs on pull requests and none has been opened (it shows as `skipped` on push runs) |
 | Secret scanning | gitleaks (full history) | `ci.yml` | **Implemented and executed** (0 leaks on 2026-09-21) — plus GitHub's native secret scanning/push protection (repository setting, recommended) |
-| Image scanning | Trivy | Phase 13/14 | **Planned** |
+| Image scanning | Trivy `image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1` on the three images built on the runner | `ci.yml`, job `images` (after the size gate, before the E2E) | **Implemented and executed** (0 HIGH/CRITICAL on 2026-09-21, [run 35623513605](https://github.com/Gabriel-PereiraL/fullfillmentHub/actions/runs/35623513605)) |
 
 ### 6.1 How CodeQL works here
 1. `codeql.yml` checks out the repository, installs .NET 10, initialises CodeQL for `csharp` with the `security-extended`
@@ -217,11 +218,31 @@ Forbidden anywhere: secrets in code, commits, logs, URLs, error messages, OpenAP
 
 Open alerts after triage: **0**. Every future finding follows §6.2.
 
+### 6.5 Supply-chain pinning in the workflows (2026-09-21)
+Everything the pipeline executes is pinned to an immutable reference, so a moved tag upstream cannot change what runs:
+
+| Dependency | Reference in the workflow | Corresponds to |
+|---|---|---|
+| `actions/checkout` | `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` | v5.1.0 |
+| `actions/setup-dotnet` | `26b0ec14cb23fa6904739307f278c14f94c95bf1` | v5.4.0 |
+| `actions/upload-artifact` | `330a01c490aca151604b8cf639adc76d48f6c5d4` | v5.0.0 |
+| `actions/dependency-review-action` | `2031cfc080254a8a887f58cffee85186f0e49e48` | v4.9.0 (head of the `v4` branch) |
+| `gitleaks/gitleaks-action` | `ff98106e4c7b2bc287b24eaf42907196329070c7` | v2.3.9 |
+| `github/codeql-action/{init,analyze}` | `1c5b675653bb5c22dbe9b12b556ec555138e09fd` | v4.38.1 |
+| `aquasec/trivy` (Docker image) | `0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969` | the digest `latest` resolved to in run 35624106304 |
+
+The SHAs are the exact commits the major tags (`v5`, `v4`, `v2`) resolved to in the green runs of 2026-09-21 (the
+runner log prints `Download action repository '…' (SHA:…)`), so pinning changed nothing about what executes. Rule for
+bumps: change the SHA and the trailing `# vX.Y.Z` comment together after reading the upstream release notes; Dependabot
+for `github-actions` is the natural automation and is a P3 item (BL-249). The base images in `docker/Dockerfile.*` are
+still referenced by tag (`10.0-alpine`); Trivy in CI is the control there, and a digest pin is part of the same item.
+
 ## 7. Pre-publication checklist (before any push/publication)
 See `DEPLOYMENT.md`, section "Leak-prevention checklist".
 
 ## 8. Security decisions
 - D-42 (payment webhooks verified with a `GET`), D-59 (delivery webhooks not verified), D-69 (webhook rate limit),
   D-82 (headers / no CORS / HTTPS at the edge), D-83 (Kestrel body limit), D-84 (`POST /orders` per-user limit),
-  D-85 (PII guard test), D-86 (readiness without the broker), D-87 (dispositions) — all in `DECISIONS.md`.
-- Open (P2): progressive login lockout, rotating refresh token, per-webhook HMAC key rotation, NuGet lock file (BL-169).
+  D-85 (PII guard test), D-86 (readiness without the broker), D-87 (dispositions), D-90 (immutable references in
+  the workflows) — all in `DECISIONS.md`.
+- Open (P2): progressive login lockout, rotating refresh token, per-webhook HMAC key rotation. (The NuGet lock file, BL-169, closed on 2026-09-21.)

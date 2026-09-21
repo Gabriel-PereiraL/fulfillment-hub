@@ -1,13 +1,13 @@
 # DEPLOYMENT — FulfillmentHub
 
 How the system is packaged, published and operated per environment. Phases 13 (Docker), 14 (CI), 15 (Terraform), 16 (cloud).
-Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is published at https://github.com/Gabriel-PereiraL/fullfillmentHub (manual push); CI/CD, images and AWS remain future work (Phases 13–16).
+Written in Phase 0; sections 2–4 record what has been executed since. The code is published at https://github.com/Gabriel-PereiraL/fullfillmentHub (manual push, since 2026-09-18); images (Phase 13) and CI/SAST (Phase 14) are implemented and run on GitHub Actions; ECR push and AWS (Phases 15–16) remain future work.
 
 ## 1. Environments
 
 | Environment | Infra | Database | Queue | Secrets | Observability | How it starts |
 |---|---|---|---|---|---|---|
-| local | docker compose | Postgres 17 container | LocalStack SQS (Phase 9) | user-secrets / `.env` | Aspire Dashboard | `docker compose up -d` + `dotnet run` (or everything in containers in Phase 13) |
+| local | docker compose | Postgres 17 container | LocalStack SQS | user-secrets / `.env` | `grafana/otel-lgtm` (Grafana, Prometheus, Tempo, Loki; Aspire Dashboard opt-in, D-78) | `docker compose --profile deps up -d` + `dotnet run`, or everything in containers with `--profile app` (§3) |
 | dev (cloud) | ECS Fargate + ALB | RDS PostgreSQL | SQS | Secrets Manager | CloudWatch + X-Ray | Terraform + CI/documented manual deploy |
 
 ## 2. Docker images — Implemented (Phase 13, 2026-09-21)
@@ -20,8 +20,8 @@ Written in Phase 0 (nothing executed externally). Since 2026-09-18 the code is p
 
 - Multi-stage: `sdk:10.0-alpine` restores **from the lock files** (`--locked-mode`, BL-169) in a cached layer, then publishes; the runtime stage copies only the publish output. Build context = repository root; `.dockerignore` keeps tests, docs, `.env*`, private tooling and `bin/obj` out.
 - No `HEALTHCHECK` baked into the image (the orchestrator probes): compose uses `wget` (BusyBox, present in Alpine) against `/health/live` (simulator) and `/health/ready` (API).
-- Scan (Gate 13): `trivy image --scanners vuln --severity HIGH,CRITICAL` → **0 findings** on the three images (Alpine 3.24 packages and the .NET 10.0.12 shared frameworks) on 2026-09-21. Re-run: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL fulfillmenthub/api:local`.
-- Tags: `local` from compose; CI tags with the commit SHA (Phase 14); no `latest` outside development. The Admin image waits for Phase 17.
+- Scan (Gate 13): `trivy image --scanners vuln --severity HIGH,CRITICAL` → **0 findings** on the three images (Alpine 3.24 packages and the .NET 10.0.12 shared frameworks) on 2026-09-21. Re-run with the same pinned scanner as CI: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.74.0 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed fulfillmenthub/api:local` (SECURITY.md §6.5).
+- Tags: `local` from compose, locally and in CI (the `images` job builds through the same compose file and pushes nothing); commit-SHA tags arrive with the ECR push (Phase 16, BL-170); no `latest` outside development. The Admin image waits for Phase 17.
 
 ## 3. Full compose — Implemented (Phase 13, 2026-09-21)
 
@@ -41,7 +41,8 @@ queues); images 168–209 MB; Trivy 0 HIGH/CRITICAL. Tear down with `docker comp
 ## 4. CI — Implemented (GitHub Actions, 2026-09-21, D-81); ECR push Planned (Phase 16)
 
 Two workflows in `.github/workflows/`, both with explicit least-privilege `permissions:` and `concurrency` cancelling
-stale runs; **no repository secrets** are required (the tests generate their own keys and containers).
+stale runs; **no repository secrets** are required (the tests generate their own keys and containers). Every action is
+pinned to a full commit SHA and the Trivy image to a digest (SECURITY.md §6.5).
 
 | Workflow | Trigger | Jobs / steps | Gate |
 |---|---|---|---|
@@ -74,6 +75,10 @@ Procedure for every later run:
 ### 4.2 Not yet in CI
 Push to ECR with OIDC (Phase 16, BL-170: needs the AWS account) and a coverage report (informational, P2). Restore runs
 in locked mode since 2026-09-21 (BL-169). The `images` job ran green on GitHub on 2026-09-21 (run 35623513605).
+
+Not yet *exercised*: the `dependency-review` job is wired but only runs on pull requests, and every change so far
+reached `main` by direct push, so it has never executed (`skipped` in every run). The first pull request will be its
+first run.
 
 ## 5. Terraform (Phase 15)
 
