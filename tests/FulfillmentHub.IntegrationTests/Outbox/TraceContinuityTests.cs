@@ -23,6 +23,13 @@ public sealed class TraceContinuityTests(ApiFixture api)
         var product = await CreateProductAsync(api, stock: 5, price: ApprovedPrice);
         using var client = await api.CreateAuthenticatedClientAsync([Role.Customer], withCustomerProfile: true);
         var traceId = ActivityTraceId.CreateRandom();
+
+        // Pause the background publisher and drain what earlier tests of this collection left in the outbox *before*
+        // the listener exists: RunOnceAsync processes the whole pending batch, so a leftover OrderPlaced from another
+        // order would otherwise produce an "Outbox OrderPlaced" span on a foreign trace and fail the assertion below.
+        using var pause = api.Outbox.Pause();
+        await api.Outbox.RunOnceAsync();
+
         var captured = new List<(string Source, string Name, ActivityTraceId TraceId)>();
         using var listener = new ActivityListener
         {
@@ -38,7 +45,6 @@ public sealed class TraceContinuityTests(ApiFixture api)
         };
         ActivitySource.AddActivityListener(listener);
 
-        using var pause = api.Outbox.Pause();
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/orders") { Content = JsonContent.Create(OrderBody((product.Id.Value, 1))) };
         request.Headers.Add(IdempotencyHeader, Guid.NewGuid().ToString());
         request.Headers.Add("traceparent", $"00-{traceId}-{ActivitySpanId.CreateRandom()}-01");
