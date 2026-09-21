@@ -19,7 +19,7 @@ an **explicit go decision** because they involve external accounts and costs (Gi
 | 7 | Delivery webhooks + idempotency + out-of-order events | **done (2026-09-18)** | Gate 7 |
 | 8 | Transactional outbox + Worker | **done (2026-09-18)** | Gate 8 |
 | 9 | SQS (LocalStack) — producer/consumer, DLQ, idempotent consumer | **done (2026-09-18)** | Gate 9 |
-| 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **in-progress (hardening track, 2026-09-21)** | Gate 10 |
+| 10 | Security hardening (threat model, OWASP, rate limiting, headers, secrets) | **done (2026-09-21)** | Gate 10 |
 | 11 | Observability hardening (metrics, traces, local dashboards, runbook) | **in-progress** (alerting subset in the hardening track) | Gate 11 |
 | 12 | Testing hardening (E2E, contract tests, chaos via simulator) | todo | Gate 12 |
 | 13 | Docker images + full compose | todo | Gate 13 |
@@ -44,6 +44,8 @@ the track does not cover.
 | 1 | 10 — Security | BL-103 (`POST /orders` rate limit), BL-106 (headers, HSTS, body limit; CORS decision), BL-107 (threat model with trust boundaries, residual risks, dispositions; OWASP checklist), BL-108 (PII guard test), BL-111 (SSRF documented) | nothing — **Gate 10 closes with this track** |
 | 2 | 11 — Observability | BL-128 (`grafana/otel-lgtm` backend + provisioning), BL-129 (four alert rules), BL-130 (fault scenarios), BL-125 (one runbook executed with evidence) | BL-122 use-case spans, BL-123 remaining metrics (`fh.idempotency.hits`, `fh.order.time_to_final`), BL-127 trace-id test, BL-246 |
 | 3 | 14 — CI | BL-166 (`ci.yml`), BL-167 (`codeql.yml` — SAST), BL-168 (dependency review, gitleaks), BL-109 (vulnerable-package gate) | BL-164 image build/Trivy/ECR (needs Phase 13 images) |
+
+**Track status (2026-09-21)**: order 1 (Phase 10) **done**; order 2 (Phase 11 alerting subset) **done** — five rules provisioned, four provoked and observed firing/resolving (`docs/incidents/2026-09-21-slow-provider-drill.md`); order 3 (Phase 14 CI/SAST subset) **workflows committed and linted; first GitHub execution pending the owner's push** (DEPLOYMENT.md §4.1). Phases 11 and 14 remain `in-progress` for their remaining items.
 
 **Invariants of the track**: no AWS resources; no new business rules; no fault injection inside the API (D-80); no
 push without the owner's authorization (the CodeQL run on GitHub is the only step that needs it); the existing
@@ -144,10 +146,11 @@ appsettings.json}`; `tests/FulfillmentHub.IntegrationTests/Api/*`; `tests/Fulfil
 **Gate 9**: a poison message goes to the DLQ after `maxReceiveCount`; a consumer receives a duplicate and does not duplicate the effect; the full compose works.
 **Result (2026-09-18)**: `Messaging:Sqs` (D-70 mode key), `IAmazonSQS` + `SqsQueueProvisioner` (queues + DLQ with redrive, D-71), `IMessagePublisher`/`SqsMessagePublisher` (JSON envelope + `type`/`traceparent`), `OutboxProcessor` publishing to `fh-domain-events`, consumers in the Worker (`SqsConsumer` base with long polling, bounded concurrency, delete after success, visibility backoff D-75; `DomainEventsConsumer` with `processed_messages` dedup in the same transaction D-72; `WebhooksInboundConsumer`), webhooks through `fh-webhooks-inbound` with a pointer + in-process fallback (D-73/D-74), `IWebhookProcessor` per provider, `fh.queue.*` metrics, OTel instrumentation of the SDK, LocalStack in the compose. Tests: 225 (3 `SqsMessagingTests` with Testcontainers LocalStack: flow through the queues, T14 redelivery without a second effect, T15 poison message → DLQ after 3). Gate 9 closed; ADR-005 with "Implementation"; smoke test with the full compose: `Created → … → Delivered` in 16 s with webhooks applied by the Worker.
 
-## Phase 10 — Security hardening
+## Phase 10 — Security hardening — `done` (2026-09-21, hardening track)
 **Goal**: SECURITY.md "implemented", not "planned".
 **Tasks**: threat model reviewed; rate limiting (login, webhooks, creation); security headers; explicit CORS; validation/size limits; mass assignment reviewed; logs without PII (redaction); `dotnet list package --vulnerable` in the local build; secrets audited; resource authorization (a customer only sees their own orders) with tests; OWASP Top 10 checklist filled in with evidence.
 **Gate 10**: checklist with a link to code/test for every item; broken access control tests.
+**Result**: SECURITY.md is the evidence record (threat model §1 with trust boundaries, STRIDE table with status per threat, dispositions §1.5, residual risks §1.6, OWASP §4 with evidence per item); new controls: security headers + HSTS, `POST /orders` per-user rate limit, Kestrel body limit, PII guard test; CORS/HTTPS decided (D-82). Tests 225 → 231.
 
 ## Phase 11 — Observability hardening
 **Goal**: metrics/traces/logs that are useful for operating; incident runbook.

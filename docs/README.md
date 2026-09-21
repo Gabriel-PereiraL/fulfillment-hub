@@ -13,7 +13,8 @@ Index of the technical documentation. Start with **PROJECT_STATE.md** (current s
 | [BACKLOG.md](BACKLOG.md) | Items by category with priority P0–P3 and status |
 | [TEST_STRATEGY.md](TEST_STRATEGY.md) | Test stack, pyramid, mandatory scenario matrix (T1–T20), quality rules |
 | [SECURITY.md](SECURITY.md) | Threat model, authentication/authorization, secrets, OWASP Top 10 checklist, personal data, SAST |
-| [OBSERVABILITY.md](OBSERVABILITY.md) | Logs, metrics, traces, correlation, alerts, runbooks |
+| [OBSERVABILITY.md](OBSERVABILITY.md) | Logs, metrics, traces, correlation, alert rules (local Grafana), runbooks, reproducible fault scenarios |
+| [incidents/](incidents/) | Executed drills with real timestamps, queries, trace ids and log lines (alerts firing and resolving) |
 | [AWS_ARCHITECTURE.md](AWS_ARCHITECTURE.md) | Target AWS architecture, cost, networking, IAM, what operating it is meant to teach |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Environments, Docker, CI, Terraform, deploy, rollback, pre-publication checklist |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Prerequisites, setup, everyday commands, configuration and secrets, workflow |

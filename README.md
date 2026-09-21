@@ -8,9 +8,11 @@ signed webhooks, security and observability — each of them covered by tests th
 > This is an engineering portfolio project built to demonstrate production-oriented backend practices in C#/.NET.
 > It is not a commercial product and does not represent a real logistics or payment operation.
 
-**Status (2026-09-18):** phases 0–9 of 20 complete. An order travels `Created → AwaitingPayment → Paid →
-DeliveryRequested → InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues
-(LocalStack) and the providers answering through signed webhooks. Next phase: **10 — Security hardening**.
+**Status (2026-09-21):** phases 0–10 of 20 complete, plus the alerting part of Phase 11 and the CI/SAST part of
+Phase 14 (a cross-phase hardening track). An order travels `Created → AwaitingPayment → Paid → DeliveryRequested →
+InDelivery → Delivered` end to end, with external effects leaving through the outbox and SQS queues (LocalStack) and
+the providers answering through signed webhooks. Alerts fire from real metrics on the local Grafana stack, and the
+GitHub Actions workflows (build/test, CodeQL) are committed — their first run needs the next push.
 Project status in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md); plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Disclaimer.** This project does not connect to Uber infrastructure or to any real payment provider.
@@ -51,10 +53,18 @@ Periodic reconciliation covers lost webhooks; the DLQ and the admin endpoints co
 - **Messaging (SQS)**: `fh-domain-events` and `fh-webhooks-inbound` queues with dead-letter queues and a redrive policy,
   consumers with long polling, bounded concurrency, visibility backoff, deduplication persisted in the same transaction
   as the effect; LocalStack in the compose; a broker-less (in-process) mode by configuration.
+- **Security hardening** (Phase 10): threat model with trust boundaries, dispositions and residual risks
+  ([docs/SECURITY.md](docs/SECURITY.md)); security headers, `POST /orders` rate limit per user, 256 KB body limit, a
+  guard test that no log message carries PII or secrets, OWASP Top 10 checklist with evidence per item.
 - **Observability**: structured logging with `LoggerMessage` (no PII/secrets), OpenTelemetry (ASP.NET Core, HttpClient,
   Npgsql, AWS SDK, runtime), custom spans for providers/outbox/queues with trace propagation through the queue,
-  business and operational metrics, correlation id, the Aspire Dashboard as the local OTLP UI.
-- **Tests**: 225 (125 unit, 5 architecture, 95 integration) — the integration tests host the API, the Worker and the
+  business and operational metrics, correlation id; locally `grafana/otel-lgtm` (Prometheus, Tempo, Loki, Grafana) with
+  a provisioned dashboard and **five alert rules** (5xx rate, p95 latency, worker heartbeat, outbox backlog, DLQ) —
+  four of them provoked and observed firing end to end ([docs/incidents](docs/incidents/2026-09-21-slow-provider-drill.md)).
+- **CI / SAST**: `ci.yml` (build with analyzers, format, vulnerable-package gate, full test suite with Testcontainers,
+  dependency review, gitleaks) and `codeql.yml` (CodeQL C#, `security-extended`) in `.github/workflows/` — written and
+  linted; first execution pending the next push (see [docs/DEPLOYMENT.md §4](docs/DEPLOYMENT.md)).
+- **Tests**: 231 (125 unit, 6 architecture, 100 integration) — the integration tests host the API, the Worker and the
   simulator in-process against real PostgreSQL and LocalStack containers (Testcontainers), with webhooks travelling
   between the hosts.
 
@@ -94,8 +104,9 @@ docs/                               product, architecture, domain, integrations,
 | HMAC webhooks, inbox, out-of-order events, reconciliation | [Api/Webhooks](src/FulfillmentHub.Api/Webhooks), [Infrastructure/Webhooks](src/FulfillmentHub.Infrastructure/Webhooks), [IntegrationTests/Payments](tests/FulfillmentHub.IntegrationTests/Payments), [IntegrationTests/Deliveries](tests/FulfillmentHub.IntegrationTests/Deliveries) |
 | Transactional outbox (atomic commit, retry, logical DLQ, requeue) | [Infrastructure/Outbox](src/FulfillmentHub.Infrastructure/Outbox), [OutboxTests](tests/FulfillmentHub.IntegrationTests/Outbox/OutboxTests.cs) |
 | SQS: idempotent consumer and dead-letter queue | [Worker/Messaging](src/FulfillmentHub.Worker/Messaging), [SqsMessagingTests](tests/FulfillmentHub.IntegrationTests/Messaging/SqsMessagingTests.cs) |
-| Security (JWT, password hashing, deny by default, rate limiting) | [Api/Identity](src/FulfillmentHub.Api/Identity), [docs/SECURITY.md](docs/SECURITY.md) |
-| Observability | [Infrastructure/Telemetry](src/FulfillmentHub.Infrastructure/Telemetry), [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
+| Security (JWT, password hashing, deny by default, rate limiting, headers, threat model) | [Api/Identity](src/FulfillmentHub.Api/Identity), [SecurityHeadersMiddleware](src/FulfillmentHub.Api/Middleware/SecurityHeadersMiddleware.cs), [SecurityHeadersTests](tests/FulfillmentHub.IntegrationTests/Api/SecurityHeadersTests.cs), [docs/SECURITY.md](docs/SECURITY.md) |
+| Observability, alert rules, executed runbooks | [Infrastructure/Telemetry](src/FulfillmentHub.Infrastructure/Telemetry), [observability/](observability), [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md), [docs/incidents](docs/incidents) |
+| CI and SAST | [.github/workflows](.github/workflows), [docs/DEPLOYMENT.md §4](docs/DEPLOYMENT.md) |
 
 ## Engineering workflow
 
@@ -106,9 +117,10 @@ engineering work. AI-generated changes are reviewed, tested and validated before
 
 ## Roadmap (not implemented yet)
 
-Security hardening (headers, CORS, OWASP checklist with evidence) → observability hardening (runbooks, alerts) →
-testing hardening (E2E, chaos) → Docker images and full compose → CI (GitHub Actions) → IaC (Terraform) and AWS
-deployment (ECS Fargate, RDS, SQS) → Admin/Ops UI (Blazor) → performance and resilience tests → portfolio release.
+Rest of observability hardening (use-case spans, remaining metrics, trace-id test) → testing hardening (E2E, chaos) →
+Docker images and full compose → image build/scan in CI → IaC (Terraform) and AWS deployment (ECS Fargate, RDS, SQS,
+CloudWatch alarms) → Admin/Ops UI (Blazor) → performance and resilience tests → portfolio release. Nothing in this
+list is claimed as done anywhere in the documentation.
 Details and acceptance criteria per phase in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Documentation
@@ -123,7 +135,7 @@ Prerequisites: .NET SDK 10, Docker Desktop. Full walkthrough in [docs/DEVELOPMEN
 
 ```bash
 cp .env.example .env                        # local Postgres password (not a real secret)
-docker compose --profile deps up -d         # PostgreSQL, LocalStack (SQS) and the Aspire Dashboard
+docker compose --profile deps up -d         # PostgreSQL, LocalStack (SQS) and grafana/otel-lgtm (Grafana on :3000)
 dotnet tool restore
 # development secrets live in user-secrets, never in versioned files:
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=fulfillmenthub;Username=fh;Password=<POSTGRES_PASSWORD>" --project src/FulfillmentHub.Api
@@ -139,8 +151,20 @@ dotnet run --project src/FulfillmentHub.Api               # http://localhost:500
 ## Tests
 
 ```bash
-dotnet test --solution FulfillmentHub.slnx   # 225 tests; Docker required for the integration tests
+dotnet test --solution FulfillmentHub.slnx   # 231 tests; Docker required for the integration tests
 ```
+
+## Security and observability evidence
+
+| Claim | State | Where to look |
+|---|---|---|
+| Threat model (assets, actors, trust boundaries, threats, controls, residual risks) | documented | [docs/SECURITY.md §1](docs/SECURITY.md) |
+| Structured logs without PII | implemented + guard test | [LogMessagePrivacyTests](tests/FulfillmentHub.ArchitectureTests/LogMessagePrivacyTests.cs) |
+| Metrics, traces, correlation id, health checks | implemented | [docs/OBSERVABILITY.md §2–§5](docs/OBSERVABILITY.md), [CorrelationIdMiddleware](src/FulfillmentHub.Api/Middleware/CorrelationIdMiddleware.cs), `/health/live`, `/health/ready` |
+| Alert rules evaluated on real metrics | implemented locally (Grafana provisioning) | [observability/grafana/provisioning/alerting](observability/grafana/provisioning/alerting/fulfillmenthub-alerts.yaml), [docs/OBSERVABILITY.md §6](docs/OBSERVABILITY.md) |
+| Alerts observed firing and resolving | executed 2026-09-21 (p95, worker heartbeat, DLQ, 5xx) | [docs/incidents/2026-09-21-slow-provider-drill.md](docs/incidents/2026-09-21-slow-provider-drill.md) |
+| CI (build, analyzers, format, vulnerable packages, tests) | workflow committed and linted; **first GitHub run pending** | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| SAST with CodeQL | workflow committed and linted; **first GitHub run pending** | [.github/workflows/codeql.yml](.github/workflows/codeql.yml), [docs/SECURITY.md §6](docs/SECURITY.md) |
 
 ## Disclaimer
 
